@@ -11,20 +11,21 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@hocuspocus/server": "^2.15.0",
+    "@collabboard/shared": "workspace:*",
     "@hocuspocus/extension-database": "^2.15.0",
+    "@hocuspocus/server": "^2.15.0",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "express-rate-limit": "^7.5.0",
     "firebase-admin": "^13.0.0",
-    "yjs": "^13.6.0",
-    "@collabboard/shared": "workspace:*"
+    "yjs": "^13.6.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
+    "@types/node": "^25.2.3",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

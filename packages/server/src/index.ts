@@ -21,8 +21,8 @@ const hocuspocus = Server.configure({
   onAuthenticate,
   extensions: [
     new Database({
-      fetch: ({ documentName }) => loadDocument(db, documentName),
-      store: ({ documentName, state }) => {
+      fetch: async ({ documentName }) => loadDocument(db, documentName),
+      store: async ({ documentName, state }) => {
         storeDocument(db, documentName, state);
       },
     }),
@@ -30,7 +30,7 @@ const hocuspocus = Server.configure({
 });
 
 // Express HTTP server (AI endpoint + health)
-const app = express();
+const app: ReturnType<typeof express> = express();
 
 app.use(
   cors({
