@@ -65,6 +65,20 @@ export function Toolbar({ board }: ToolbarProps): React.JSX.Element {
 
       <div style={styles.separator} />
 
+      <button
+        style={styles.clearBtn}
+        onClick={() => {
+          if (window.confirm('Clear all objects from the board?')) {
+            board.clearAll();
+          }
+        }}
+        title="Clear Board"
+      >
+        Clear
+      </button>
+
+      <div style={styles.separator} />
+
       {STICKY_COLORS.map((color) => (
         <button
           key={color}
@@ -109,6 +123,16 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#e3f2fd',
     borderColor: '#2196F3',
     color: '#1565C0',
+  },
+  clearBtn: {
+    padding: '6px 14px',
+    border: '1px solid #e57373',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    color: '#c62828',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 500,
   },
   separator: {
     width: 1,
