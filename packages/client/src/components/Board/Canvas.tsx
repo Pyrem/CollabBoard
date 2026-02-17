@@ -33,6 +33,7 @@ interface EditingState {
   screenY: number;
   width: number;
   height: number;
+  color: string;
 }
 
 // Helper: get boardId from a Fabric object
@@ -208,9 +209,15 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
       const screenWidth = (target.width ?? 200) * zoom;
       const screenHeight = (target.height ?? 200) * zoom;
 
-      // Get current text from Textbox sub-object
+      // Get current text and color from sub-objects
       const textObj = target.getObjects().find((o) => o instanceof Textbox) as Textbox | undefined;
+      const bgObj = target.getObjects().find((o) => o instanceof Rect) as Rect | undefined;
       const currentText = textObj?.text ?? '';
+      const stickyColor = (bgObj?.fill as string) ?? '#FFEB3B';
+
+      // Hide the Group so its text doesn't show through the textarea
+      target.set('opacity', 0);
+      canvas.renderAll();
 
       setEditingSticky({
         id,
@@ -219,6 +226,7 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
         screenY,
         width: screenWidth,
         height: screenHeight,
+        color: stickyColor,
       });
     });
 
@@ -389,6 +397,19 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objectsMap]);
 
+  // Restore opacity on the Fabric Group being edited
+  const restoreEditingGroup = useCallback((): void => {
+    const editing = editingStickyRef.current;
+    if (!editing) return;
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const group = canvas.getObjects().find((obj) => getBoardId(obj) === editing.id);
+    if (group) {
+      group.set('opacity', 1);
+      canvas.renderAll();
+    }
+  }, []);
+
   // Save sticky note text edit and close overlay
   const handleSaveEdit = useCallback(
     (text: string): void => {
@@ -396,9 +417,12 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
       if (!editing) return;
       const finalText = text.trim() || '';
       boardRef.current.updateObject(editing.id, { text: finalText } as Partial<BoardObject>);
+      // Restore opacity before closing — the Yjs update will recreate the Group
+      // with full opacity, but restore just in case timing differs
+      restoreEditingGroup();
       setEditingSticky(null);
     },
-    [],
+    [restoreEditingGroup],
   );
 
   return (
@@ -415,7 +439,7 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
             fontSize: 16 * (fabricRef.current?.getZoom() ?? 1),
             fontFamily: 'sans-serif',
             color: '#333',
-            backgroundColor: 'transparent',
+            backgroundColor: editingSticky.color,
             border: '2px solid #2196F3',
             borderRadius: 4,
             padding: 10,
@@ -429,6 +453,7 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
           onBlur={(e) => handleSaveEdit(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
+              restoreEditingGroup();
               setEditingSticky(null);
             }
           }}
