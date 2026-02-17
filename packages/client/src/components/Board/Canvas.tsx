@@ -79,6 +79,16 @@ function createStickyGroup(stickyData: StickyNote): Group {
     hasControls: false,
   });
 
+  // After Group creation, explicitly position sub-objects so that
+  // the bg fills the entire Group and text has consistent padding.
+  // The layout manager may place the Textbox at an unexpected offset
+  // due to text measurement differences in the browser.
+  const halfW = group.width / 2;
+  const halfH = group.height / 2;
+  bg.set({ left: -halfW, top: -halfH, width: group.width, height: group.height });
+  text.set({ left: -halfW + 10, top: -halfH + 10, width: group.width - 20 });
+  group.dirty = true;
+
   return group;
 }
 
