@@ -41,9 +41,21 @@ export async function logOut(): Promise<void> {
 }
 
 export async function getIdToken(): Promise<string | null> {
+  // If currentUser is already available, use it directly
   const user = auth.currentUser;
-  if (!user) return null;
-  return user.getIdToken();
+  if (user) return user.getIdToken();
+
+  // Otherwise wait for auth state to resolve (handles page refresh)
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      unsubscribe();
+      if (firebaseUser) {
+        firebaseUser.getIdToken().then(resolve).catch(() => resolve(null));
+      } else {
+        resolve(null);
+      }
+    });
+  });
 }
 
 export { auth, onAuthStateChanged, type User };
