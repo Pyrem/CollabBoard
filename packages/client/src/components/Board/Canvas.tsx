@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Canvas as FabricCanvas,
   Rect,
@@ -19,11 +19,25 @@ interface CanvasProps {
   onCursorMove: (position: CursorPosition) => void;
 }
 
+interface EditingState {
+  id: string;
+  text: string;
+  screenX: number;
+  screenY: number;
+  width: number;
+  height: number;
+}
+
 export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
   const isLocalUpdateRef = useRef(false);
+
+  // State for sticky note inline text editing
+  const [editingSticky, setEditingSticky] = useState<EditingState | null>(null);
+  const editingStickyRef = useRef(editingSticky);
+  editingStickyRef.current = editingSticky;
 
   // Keep refs in sync with latest props to avoid stale closures
   // without causing effect re-runs
@@ -95,6 +109,36 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
       opt.e.stopPropagation();
     });
 
+    // Double-click to edit sticky note text via HTML textarea overlay
+    canvas.on('mouse:dblclick', (opt: TPointerEventInfo<TPointerEvent>) => {
+      const target = opt.target;
+      if (!target || !(target instanceof Group)) return;
+      const id = (target as unknown as { boardId?: string }).boardId;
+      if (!id) return;
+
+      // Calculate screen position for the textarea overlay
+      const zoom = canvas.getZoom();
+      const vpt = canvas.viewportTransform;
+      if (!vpt) return;
+      const screenX = (target.left ?? 0) * zoom + vpt[4];
+      const screenY = (target.top ?? 0) * zoom + vpt[5];
+      const screenWidth = (target.width ?? 200) * zoom;
+      const screenHeight = (target.height ?? 200) * zoom;
+
+      // Get current text from Textbox sub-object
+      const textObj = target.getObjects().find((o) => o instanceof Textbox) as Textbox | undefined;
+      const currentText = textObj?.text ?? '';
+
+      setEditingSticky({
+        id,
+        text: currentText === 'Type here...' ? '' : currentText,
+        screenX,
+        screenY,
+        width: screenWidth,
+        height: screenHeight,
+      });
+    });
+
     // Handle local object modifications -> sync to Yjs
     canvas.on('object:modified', (opt) => {
       if (isRemoteUpdateRef.current) return;
@@ -146,7 +190,7 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
         obj.set({ scaleX: 1, scaleY: 1 });
       }
       obj.setCoords();
-      canvas.requestRenderAll();
+      canvas.renderAll();
     });
 
     // Handle window resize
@@ -188,38 +232,40 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
         });
 
         if (data.type === 'sticky' && existing instanceof Group) {
+          const stickyData = data as StickyNote;
           const items = existing.getObjects();
           const bgRect = items[0];
           if (bgRect instanceof Rect) {
             bgRect.set({
-              width: data.width,
-              height: data.height,
-              fill: (data as StickyNote).color,
-              left: -data.width / 2,
-              top: -data.height / 2,
+              width: stickyData.width,
+              height: stickyData.height,
+              fill: stickyData.color,
+              left: -stickyData.width / 2,
+              top: -stickyData.height / 2,
             });
           }
           const textObj = items[1];
           if (textObj instanceof Textbox) {
             textObj.set({
-              text: (data as StickyNote).text,
-              left: -data.width / 2 + 10,
-              top: -data.height / 2 + 10,
-              width: data.width - 20,
+              text: stickyData.text || 'Type here...',
+              left: -stickyData.width / 2 + 10,
+              top: -stickyData.height / 2 + 10,
+              width: stickyData.width - 20,
             });
           }
-          existing.set({ width: data.width, height: data.height });
+          existing.set({ width: stickyData.width, height: stickyData.height });
         } else if (data.type === 'rectangle' && existing instanceof Rect) {
           const rectData = data as RectangleShape;
           existing.set({
             width: rectData.width,
             height: rectData.height,
-            fill: rectData.fill || DEFAULT_FILL,
-            stroke: rectData.stroke || DEFAULT_STROKE,
           });
+          // Explicitly set fill/stroke via separate .set() call for reliability
+          existing.set('fill', rectData.fill || DEFAULT_FILL);
+          existing.set('stroke', rectData.stroke || DEFAULT_STROKE);
         }
         existing.setCoords();
-        canvas.requestRenderAll();
+        canvas.renderAll();
       } else {
         // Create new object on canvas
         if (data.type === 'sticky') {
@@ -233,8 +279,6 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
             strokeWidth: 0,
             originX: 'center',
             originY: 'center',
-            selectable: false,
-            evented: false,
           });
 
           const text = new Textbox(stickyData.text || 'Type here...', {
@@ -245,24 +289,14 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
             originY: 'center',
             textAlign: 'left',
             splitByGrapheme: true,
-            lockMovementX: true,
-            lockMovementY: true,
-            hasControls: false,
-            hasBorders: false,
-          });
-
-          text.on('changed', () => {
-            if (!isRemoteUpdateRef.current) {
-              boardRef.current.updateObject(id, { text: text.text ?? '' } as Partial<BoardObject>);
-            }
           });
 
           const group = new Group([bg, text], {
             left: stickyData.x,
             top: stickyData.y,
             angle: stickyData.rotation,
-            subTargetCheck: true,
-            interactive: true,
+            subTargetCheck: false,
+            interactive: false,
           });
 
           (group as unknown as { boardId: string }).boardId = id;
@@ -270,21 +304,25 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
           group.setCoords();
         } else if (data.type === 'rectangle') {
           const rectData = data as RectangleShape;
+          const fillColor = rectData.fill || DEFAULT_FILL;
+          const strokeColor = rectData.stroke || DEFAULT_STROKE;
           const rect = new Rect({
             left: rectData.x,
             top: rectData.y,
             width: rectData.width,
             height: rectData.height,
-            fill: rectData.fill || DEFAULT_FILL,
-            stroke: rectData.stroke || DEFAULT_STROKE,
             strokeWidth: 2,
             angle: rectData.rotation,
           });
+          // Set fill and stroke explicitly via .set() to ensure they take effect
+          rect.set('fill', fillColor);
+          rect.set('stroke', strokeColor);
+          rect.dirty = true;
           (rect as unknown as { boardId: string }).boardId = id;
           canvas.add(rect);
           rect.setCoords();
         }
-        canvas.requestRenderAll();
+        canvas.renderAll();
       }
       isRemoteUpdateRef.current = false;
     };
@@ -296,7 +334,7 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
         return bObj.boardId === id;
       });
       toRemove.forEach((obj) => canvas.remove(obj));
-      canvas.requestRenderAll();
+      canvas.renderAll();
       isRemoteUpdateRef.current = false;
     };
 
@@ -328,7 +366,51 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objectsMap]);
 
+  // Save sticky note text edit and close overlay
+  const handleSaveEdit = useCallback(
+    (text: string): void => {
+      const editing = editingStickyRef.current;
+      if (!editing) return;
+      const finalText = text.trim() || '';
+      boardRef.current.updateObject(editing.id, { text: finalText } as Partial<BoardObject>);
+      setEditingSticky(null);
+    },
+    [],
+  );
+
   return (
-    <canvas ref={canvasElRef} style={{ display: 'block' }} />
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <canvas ref={canvasElRef} style={{ display: 'block' }} />
+      {editingSticky && (
+        <textarea
+          style={{
+            position: 'absolute',
+            left: editingSticky.screenX,
+            top: editingSticky.screenY,
+            width: editingSticky.width,
+            height: editingSticky.height,
+            fontSize: 16 * (fabricRef.current?.getZoom() ?? 1),
+            fontFamily: 'sans-serif',
+            color: '#333',
+            backgroundColor: 'transparent',
+            border: '2px solid #2196F3',
+            borderRadius: 4,
+            padding: 10,
+            resize: 'none',
+            outline: 'none',
+            zIndex: 200,
+            boxSizing: 'border-box',
+          }}
+          defaultValue={editingSticky.text}
+          autoFocus
+          onBlur={(e) => handleSaveEdit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setEditingSticky(null);
+            }
+          }}
+        />
+      )}
+    </div>
   );
 }
