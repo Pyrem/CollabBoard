@@ -22,8 +22,8 @@ export const DEFAULT_CIRCLE_WIDTH = 100;
 export const DEFAULT_CIRCLE_HEIGHT = 100;
 
 // Default colors for shapes
-export const DEFAULT_FILL = '#FFFFFF';
-export const DEFAULT_STROKE = '#333333';
+export const DEFAULT_FILL = '#4CAF50';
+export const DEFAULT_STROKE = '#000000';
 export const DEFAULT_STROKE_WIDTH = 2;
 
 // Cursor
