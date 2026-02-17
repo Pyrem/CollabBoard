@@ -1,20 +1,22 @@
 import { useState } from 'react';
 import type { useBoard } from '../../hooks/useBoard.js';
+import type { SelectedObject } from '../Board/Canvas.js';
+import type { BoardObject } from '@collabboard/shared';
 import { STICKY_COLORS } from '@collabboard/shared';
 
 interface ToolbarProps {
   board: ReturnType<typeof useBoard>;
+  selectedObject: SelectedObject | null;
 }
 
 type Tool = 'select' | 'sticky' | 'rectangle';
 
-export function Toolbar({ board }: ToolbarProps): React.JSX.Element {
+export function Toolbar({ board, selectedObject }: ToolbarProps): React.JSX.Element {
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [selectedColor, setSelectedColor] = useState<string>(STICKY_COLORS[0]);
 
   const handleToolClick = (tool: Tool): void => {
     if (tool === 'sticky') {
-      // Place at center of viewport
       board.createStickyNote(
         window.innerWidth / 2 - 100,
         window.innerHeight / 2 - 100,
@@ -31,6 +33,18 @@ export function Toolbar({ board }: ToolbarProps): React.JSX.Element {
       );
     }
     setActiveTool(tool);
+  };
+
+  const handleColorClick = (color: string): void => {
+    setSelectedColor(color);
+    // If an object is selected, update its color in-place
+    if (selectedObject) {
+      if (selectedObject.type === 'sticky') {
+        board.updateObject(selectedObject.id, { color } as Partial<BoardObject>);
+      } else if (selectedObject.type === 'rectangle') {
+        board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
+      }
+    }
   };
 
   return (
@@ -90,7 +104,7 @@ export function Toolbar({ board }: ToolbarProps): React.JSX.Element {
             backgroundColor: color,
             ...(selectedColor === color ? { outline: '2px solid #333', outlineOffset: 2 } : {}),
           }}
-          onClick={() => setSelectedColor(color)}
+          onClick={() => handleColorClick(color)}
           title={color}
         />
       ))}

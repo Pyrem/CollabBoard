@@ -13,10 +13,16 @@ import type { CursorPosition } from '@collabboard/shared';
 import { DEFAULT_FILL, DEFAULT_STROKE } from '@collabboard/shared';
 import type { useBoard } from '../../hooks/useBoard.js';
 
+export interface SelectedObject {
+  id: string;
+  type: string;
+}
+
 interface CanvasProps {
   objectsMap: Y.Map<unknown>;
   board: ReturnType<typeof useBoard>;
   onCursorMove: (position: CursorPosition) => void;
+  onSelectionChange: (selected: SelectedObject | null) => void;
 }
 
 interface EditingState {
@@ -28,7 +34,7 @@ interface EditingState {
   height: number;
 }
 
-export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.JSX.Element {
+export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
@@ -45,6 +51,8 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
   boardRef.current = board;
   const onCursorMoveRef = useRef(onCursorMove);
   onCursorMoveRef.current = onCursorMove;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
 
   // Initialize Fabric.js canvas — runs once on mount
   useEffect(() => {
@@ -109,6 +117,23 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
       opt.e.stopPropagation();
     });
 
+    // Track selection changes for color palette integration
+    const notifySelection = (): void => {
+      const active = canvas.getActiveObject();
+      if (active) {
+        const id = (active as unknown as { boardId?: string }).boardId;
+        if (id) {
+          const data = boardRef.current.getObject(id);
+          onSelectionChangeRef.current(data ? { id, type: data.type } : null);
+          return;
+        }
+      }
+      onSelectionChangeRef.current(null);
+    };
+    canvas.on('selection:created', notifySelection);
+    canvas.on('selection:updated', notifySelection);
+    canvas.on('selection:cleared', notifySelection);
+
     // Double-click to edit sticky note text via HTML textarea overlay
     canvas.on('mouse:dblclick', (opt: TPointerEventInfo<TPointerEvent>) => {
       const target = opt.target;
@@ -164,29 +189,10 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
 
       isLocalUpdateRef.current = false;
 
-      // For Groups (sticky notes), update internal objects to match new size
+      // Normalize scale back to 1 after saving actual dimensions
       if (obj instanceof Group) {
-        const items = obj.getObjects();
-        const bgRect = items[0];
-        if (bgRect instanceof Rect) {
-          bgRect.set({
-            width: actualWidth,
-            height: actualHeight,
-            left: -actualWidth / 2,
-            top: -actualHeight / 2,
-          });
-        }
-        const textObj = items[1];
-        if (textObj) {
-          textObj.set({
-            left: -actualWidth / 2 + 10,
-            top: -actualHeight / 2 + 10,
-            width: actualWidth - 20,
-          });
-        }
         obj.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
       } else {
-        // Simple objects (rectangles)
         obj.set({ scaleX: 1, scaleY: 1 });
       }
       obj.setCoords();
@@ -234,33 +240,24 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
         if (data.type === 'sticky' && existing instanceof Group) {
           const stickyData = data as StickyNote;
           const items = existing.getObjects();
+          // Only update content properties — do NOT manually reposition
+          // sub-objects as that conflicts with Fabric's Group layout manager
           const bgRect = items[0];
           if (bgRect instanceof Rect) {
-            bgRect.set({
-              width: stickyData.width,
-              height: stickyData.height,
-              fill: stickyData.color,
-              left: -stickyData.width / 2,
-              top: -stickyData.height / 2,
-            });
+            bgRect.set('fill', stickyData.color);
           }
           const textObj = items[1];
           if (textObj instanceof Textbox) {
-            textObj.set({
-              text: stickyData.text || 'Type here...',
-              left: -stickyData.width / 2 + 10,
-              top: -stickyData.height / 2 + 10,
-              width: stickyData.width - 20,
-            });
+            textObj.set('text', stickyData.text || 'Type here...');
           }
-          existing.set({ width: stickyData.width, height: stickyData.height });
+          // Invalidate Group's render cache so sub-object changes are painted
+          existing.dirty = true;
         } else if (data.type === 'rectangle' && existing instanceof Rect) {
           const rectData = data as RectangleShape;
           existing.set({
             width: rectData.width,
             height: rectData.height,
           });
-          // Explicitly set fill/stroke via separate .set() call for reliability
           existing.set('fill', rectData.fill || DEFAULT_FILL);
           existing.set('stroke', rectData.stroke || DEFAULT_STROKE);
         }
@@ -277,16 +274,12 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
             rx: 4,
             ry: 4,
             strokeWidth: 0,
-            originX: 'center',
-            originY: 'center',
           });
 
           const text = new Textbox(stickyData.text || 'Type here...', {
             fontSize: 16,
             fill: '#333',
             width: stickyData.width - 20,
-            originX: 'center',
-            originY: 'center',
             textAlign: 'left',
             splitByGrapheme: true,
           });
@@ -314,7 +307,6 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
             strokeWidth: 2,
             angle: rectData.rotation,
           });
-          // Set fill and stroke explicitly via .set() to ensure they take effect
           rect.set('fill', fillColor);
           rect.set('stroke', strokeColor);
           rect.dirty = true;
