@@ -18,7 +18,7 @@ import {
 
 interface UseBoardReturn {
   createStickyNote: (x: number, y: number, text?: string, color?: string) => string;
-  createRectangle: (x: number, y: number, width?: number, height?: number) => string;
+  createRectangle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string;
   updateObject: (id: string, updates: Partial<BoardObject>) => void;
   deleteObject: (id: string) => void;
   getObject: (id: string) => BoardObject | undefined;
@@ -55,7 +55,7 @@ export function useBoard(
   );
 
   const createRectangle = useCallback(
-    (x: number, y: number, width = DEFAULT_RECT_WIDTH, height = DEFAULT_RECT_HEIGHT): string => {
+    (x: number, y: number, width = DEFAULT_RECT_WIDTH, height = DEFAULT_RECT_HEIGHT, fill = DEFAULT_FILL, stroke = DEFAULT_STROKE): string => {
       if (!objectsMap) return '';
       const id = uuidv4();
       const rect: RectangleShape = {
@@ -69,8 +69,8 @@ export function useBoard(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
-        fill: DEFAULT_FILL,
-        stroke: DEFAULT_STROKE,
+        fill,
+        stroke,
       };
       objectsMap.set(id, rect);
       return id;

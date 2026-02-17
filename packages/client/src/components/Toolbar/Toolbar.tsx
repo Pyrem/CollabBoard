@@ -10,7 +10,7 @@ type Tool = 'select' | 'sticky' | 'rectangle';
 
 export function Toolbar({ board }: ToolbarProps): React.JSX.Element {
   const [activeTool, setActiveTool] = useState<Tool>('select');
-  const [stickyColor, setStickyColor] = useState<string>(STICKY_COLORS[0]);
+  const [selectedColor, setSelectedColor] = useState<string>(STICKY_COLORS[0]);
 
   const handleToolClick = (tool: Tool): void => {
     if (tool === 'sticky') {
@@ -19,12 +19,15 @@ export function Toolbar({ board }: ToolbarProps): React.JSX.Element {
         window.innerWidth / 2 - 100,
         window.innerHeight / 2 - 100,
         '',
-        stickyColor,
+        selectedColor,
       );
     } else if (tool === 'rectangle') {
       board.createRectangle(
         window.innerWidth / 2 - 75,
         window.innerHeight / 2 - 50,
+        undefined,
+        undefined,
+        selectedColor,
       );
     }
     setActiveTool(tool);
@@ -85,9 +88,9 @@ export function Toolbar({ board }: ToolbarProps): React.JSX.Element {
           style={{
             ...styles.colorBtn,
             backgroundColor: color,
-            ...(stickyColor === color ? { outline: '2px solid #333', outlineOffset: 2 } : {}),
+            ...(selectedColor === color ? { outline: '2px solid #333', outlineOffset: 2 } : {}),
           }}
-          onClick={() => setStickyColor(color)}
+          onClick={() => setSelectedColor(color)}
           title={color}
         />
       ))}
