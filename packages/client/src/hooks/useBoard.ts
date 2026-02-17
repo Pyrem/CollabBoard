@@ -23,6 +23,7 @@ interface UseBoardReturn {
   deleteObject: (id: string) => void;
   getObject: (id: string) => BoardObject | undefined;
   getAllObjects: () => BoardObject[];
+  clearAll: () => void;
 }
 
 export function useBoard(
@@ -117,5 +118,15 @@ export function useBoard(
     return objects;
   }, [objectsMap]);
 
-  return { createStickyNote, createRectangle, updateObject, deleteObject, getObject, getAllObjects };
+  const clearAll = useCallback((): void => {
+    if (!objectsMap) return;
+    const keys = Array.from(objectsMap.keys());
+    objectsMap.doc?.transact(() => {
+      for (const key of keys) {
+        objectsMap.delete(key);
+      }
+    });
+  }, [objectsMap]);
+
+  return { createStickyNote, createRectangle, updateObject, deleteObject, getObject, getAllObjects, clearAll };
 }
