@@ -1,7 +1,14 @@
-import { useEffect, useRef, useCallback } from 'react';
-import { Canvas as FabricCanvas, Rect, IText, type TPointerEvent, type TPointerEventInfo } from 'fabric';
+import { useEffect, useRef } from 'react';
+import {
+  Canvas as FabricCanvas,
+  Rect,
+  Textbox,
+  Group,
+  type TPointerEvent,
+  type TPointerEventInfo,
+} from 'fabric';
 import type * as Y from 'yjs';
-import type { BoardObject } from '@collabboard/shared';
+import type { BoardObject, StickyNote } from '@collabboard/shared';
 import type { CursorPosition } from '@collabboard/shared';
 import type { useBoard } from '../../hooks/useBoard.js';
 
@@ -16,7 +23,14 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
 
-  // Initialize Fabric.js canvas
+  // Keep refs in sync with latest props to avoid stale closures
+  // without causing effect re-runs
+  const boardRef = useRef(board);
+  boardRef.current = board;
+  const onCursorMoveRef = useRef(onCursorMove);
+  onCursorMoveRef.current = onCursorMove;
+
+  // Initialize Fabric.js canvas — runs once on mount
   useEffect(() => {
     const canvasEl = canvasElRef.current;
     if (!canvasEl) return;
@@ -46,9 +60,8 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
 
     canvas.on('mouse:move', (opt: TPointerEventInfo<TPointerEvent>) => {
       const evt = opt.e as MouseEvent;
-      // Broadcast cursor position
       const pointer = canvas.getScenePoint(evt);
-      onCursorMove({ x: pointer.x, y: pointer.y });
+      onCursorMoveRef.current({ x: pointer.x, y: pointer.y });
 
       if (isPanning) {
         const dx = evt.clientX - lastPosX;
@@ -88,15 +101,52 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
       const id = (obj as unknown as { boardId?: string }).boardId;
       if (!id) return;
 
-      board.updateObject(id, {
+      const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
+      const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
+
+      boardRef.current.updateObject(id, {
         x: obj.left ?? 0,
         y: obj.top ?? 0,
-        width: (obj.width ?? 0) * (obj.scaleX ?? 1),
-        height: (obj.height ?? 0) * (obj.scaleY ?? 1),
+        width: actualWidth,
+        height: actualHeight,
         rotation: obj.angle ?? 0,
       });
-      // Reset scale after applying to width/height
-      obj.set({ scaleX: 1, scaleY: 1 });
+
+      // For Groups (sticky notes), update internal objects to match new size
+      if (obj instanceof Group) {
+        const items = obj.getObjects();
+        const bgRect = items[0];
+        if (bgRect instanceof Rect) {
+          bgRect.set({
+            width: actualWidth,
+            height: actualHeight,
+            left: -actualWidth / 2,
+            top: -actualHeight / 2,
+          });
+        }
+        const textObj = items[1];
+        if (textObj) {
+          textObj.set({
+            left: -actualWidth / 2 + 10,
+            top: -actualHeight / 2 + 10,
+            width: actualWidth - 20,
+          });
+        }
+        obj.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
+      } else {
+        // Simple objects (rectangles)
+        obj.set({ scaleX: 1, scaleY: 1 });
+      }
+      obj.setCoords();
+    });
+
+    // Bring object to front on selection (fixes overlap interaction)
+    canvas.on('selection:created', (opt) => {
+      const selected = opt.selected;
+      const first = selected?.[0];
+      if (first) {
+        canvas.bringObjectToFront(first);
+      }
     });
 
     // Handle window resize
@@ -110,9 +160,10 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
       canvas.dispose();
       fabricRef.current = null;
     };
-  }, [board, onCursorMove]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Observe Yjs changes and sync to Fabric
+  // Observe Yjs changes and sync to Fabric canvas
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -124,71 +175,90 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
       );
 
       if (existing) {
-        // Update existing object
-        if (data.type === 'sticky') {
-          existing.set({
-            left: data.x,
-            top: data.y,
-            width: data.width,
-            height: data.height,
-            angle: data.rotation,
-          });
-          if (existing instanceof IText) {
-            existing.set({ text: data.text });
+        // Update existing object position/rotation
+        existing.set({
+          left: data.x,
+          top: data.y,
+          angle: data.rotation,
+          scaleX: 1,
+          scaleY: 1,
+        });
+
+        if (data.type === 'sticky' && existing instanceof Group) {
+          const items = existing.getObjects();
+          const bgRect = items[0];
+          if (bgRect instanceof Rect) {
+            bgRect.set({
+              width: data.width,
+              height: data.height,
+              fill: (data as StickyNote).color,
+              left: -data.width / 2,
+              top: -data.height / 2,
+            });
           }
-        } else if (data.type === 'rectangle') {
+          const textObj = items[1];
+          if (textObj instanceof Textbox) {
+            textObj.set({
+              text: (data as StickyNote).text,
+              left: -data.width / 2 + 10,
+              top: -data.height / 2 + 10,
+              width: data.width - 20,
+            });
+          }
+          existing.set({ width: data.width, height: data.height });
+        } else if (data.type === 'rectangle' && existing instanceof Rect) {
           existing.set({
-            left: data.x,
-            top: data.y,
             width: data.width,
             height: data.height,
-            angle: data.rotation,
             fill: data.fill,
             stroke: data.stroke,
           });
         }
+        existing.setCoords();
         canvas.requestRenderAll();
       } else {
         // Create new object on canvas
-        let fabricObj: Rect | IText | null = null;
-
         if (data.type === 'sticky') {
-          // Sticky note: colored rectangle with text
+          const stickyData = data as StickyNote;
           const bg = new Rect({
-            left: data.x,
-            top: data.y,
-            width: data.width,
-            height: data.height,
-            fill: data.color,
+            width: stickyData.width,
+            height: stickyData.height,
+            fill: stickyData.color,
             rx: 4,
             ry: 4,
-            angle: data.rotation,
             strokeWidth: 0,
+            originX: 'center',
+            originY: 'center',
           });
-          (bg as unknown as { boardId: string }).boardId = id;
-          canvas.add(bg);
 
-          const text = new IText(data.text || 'Type here...', {
-            left: data.x + 10,
-            top: data.y + 10,
-            width: data.width - 20,
+          const text = new Textbox(stickyData.text || 'Type here...', {
             fontSize: 16,
             fill: '#333',
-            angle: data.rotation,
+            width: stickyData.width - 20,
+            originX: 'center',
+            originY: 'center',
+            textAlign: 'left',
+            splitByGrapheme: true,
           });
-          (text as unknown as { boardId: string; parentBoardId: string }).boardId = id + '_text';
-          (text as unknown as { boardId: string; parentBoardId: string }).parentBoardId = id;
 
           text.on('changed', () => {
             if (!isRemoteUpdateRef.current) {
-              board.updateObject(id, { text: text.text ?? '' } as Partial<BoardObject>);
+              boardRef.current.updateObject(id, { text: text.text ?? '' } as Partial<BoardObject>);
             }
           });
 
-          canvas.add(text);
-          fabricObj = bg;
+          const group = new Group([bg, text], {
+            left: stickyData.x,
+            top: stickyData.y,
+            angle: stickyData.rotation,
+            subTargetCheck: true,
+            interactive: true,
+          });
+
+          (group as unknown as { boardId: string }).boardId = id;
+          canvas.add(group);
         } else if (data.type === 'rectangle') {
-          fabricObj = new Rect({
+          const rect = new Rect({
             left: data.x,
             top: data.y,
             width: data.width,
@@ -198,34 +268,32 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
             strokeWidth: 2,
             angle: data.rotation,
           });
-          (fabricObj as unknown as { boardId: string }).boardId = id;
-          canvas.add(fabricObj);
+          (rect as unknown as { boardId: string }).boardId = id;
+          canvas.add(rect);
         }
-
-        if (fabricObj) {
-          canvas.requestRenderAll();
-        }
+        canvas.requestRenderAll();
       }
       isRemoteUpdateRef.current = false;
     };
 
     const removeObjectFromCanvas = (id: string): void => {
       isRemoteUpdateRef.current = true;
-      const toRemove = canvas.getObjects().filter(
-        (obj) => {
-          const bObj = obj as unknown as { boardId?: string; parentBoardId?: string };
-          return bObj.boardId === id || bObj.parentBoardId === id || bObj.boardId === id + '_text';
-        },
-      );
+      const toRemove = canvas.getObjects().filter((obj) => {
+        const bObj = obj as unknown as { boardId?: string };
+        return bObj.boardId === id;
+      });
       toRemove.forEach((obj) => canvas.remove(obj));
       canvas.requestRenderAll();
       isRemoteUpdateRef.current = false;
     };
 
-    // Initial load of all objects
+    // Initial load — sort by zIndex so objects layer correctly
+    const objects: Array<[string, BoardObject]> = [];
     objectsMap.forEach((value, key) => {
-      syncObjectToCanvas(key, value as BoardObject);
+      objects.push([key, value as BoardObject]);
     });
+    objects.sort((a, b) => a[1].zIndex - b[1].zIndex);
+    objects.forEach(([key, data]) => syncObjectToCanvas(key, data));
 
     // Observe Yjs map changes
     const observer = (events: Y.YMapEvent<unknown>): void => {
@@ -244,7 +312,8 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
     return () => {
       objectsMap.unobserve(observer);
     };
-  }, [objectsMap, board]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [objectsMap]);
 
   return (
     <canvas ref={canvasElRef} style={{ display: 'block' }} />
