@@ -19,11 +19,17 @@ export interface SelectedObject {
   type: string;
 }
 
+export interface SceneCenter {
+  x: number;
+  y: number;
+}
+
 interface CanvasProps {
   objectsMap: Y.Map<unknown>;
   board: ReturnType<typeof useBoard>;
   onCursorMove: (position: CursorPosition) => void;
   onSelectionChange: (selected: SelectedObject | null) => void;
+  onReady: (getSceneCenter: () => SceneCenter) => void;
 }
 
 interface EditingState {
@@ -93,7 +99,7 @@ function createStickyGroup(stickyData: StickyNote): Group {
   return group;
 }
 
-export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: CanvasProps): React.JSX.Element {
+export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange, onReady }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
@@ -112,6 +118,8 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
   onCursorMoveRef.current = onCursorMove;
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   // Initialize Fabric.js canvas — runs once on mount
   useEffect(() => {
@@ -125,6 +133,19 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
       selection: true,
     });
     fabricRef.current = canvas;
+
+    // Expose a function to get the center of the visible scene area
+    onReadyRef.current(() => {
+      const zoom = canvas.getZoom();
+      const vpt = canvas.viewportTransform;
+      if (!vpt) return { x: 0, y: 0 };
+      const centerScreenX = window.innerWidth / 2;
+      const centerScreenY = window.innerHeight / 2;
+      return {
+        x: (centerScreenX - vpt[4]) / zoom,
+        y: (centerScreenY - vpt[5]) / zoom,
+      };
+    });
 
     // Pan/zoom setup
     let isPanning = false;

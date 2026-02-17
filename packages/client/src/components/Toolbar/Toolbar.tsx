@@ -7,26 +7,28 @@ import { STICKY_COLORS } from '@collabboard/shared';
 interface ToolbarProps {
   board: ReturnType<typeof useBoard>;
   selectedObject: SelectedObject | null;
+  getSceneCenter: () => { x: number; y: number };
 }
 
 type Tool = 'select' | 'sticky' | 'rectangle';
 
-export function Toolbar({ board, selectedObject }: ToolbarProps): React.JSX.Element {
+export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps): React.JSX.Element {
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [selectedColor, setSelectedColor] = useState<string>(STICKY_COLORS[0]);
 
   const handleToolClick = (tool: Tool): void => {
+    const center = getSceneCenter();
     if (tool === 'sticky') {
       board.createStickyNote(
-        window.innerWidth / 2 - 100,
-        window.innerHeight / 2 - 100,
+        center.x - 100,
+        center.y - 100,
         '',
         selectedColor,
       );
     } else if (tool === 'rectangle') {
       board.createRectangle(
-        window.innerWidth / 2 - 75,
-        window.innerHeight / 2 - 50,
+        center.x - 75,
+        center.y - 50,
         undefined,
         undefined,
         selectedColor,

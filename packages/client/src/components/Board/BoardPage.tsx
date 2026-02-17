@@ -1,11 +1,11 @@
-import { use, useCallback, useState } from 'react';
+import { use, useCallback, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AuthContext } from '../../hooks/useAuth.js';
 import { useYjs } from '../../hooks/useYjs.js';
 import { useBoard } from '../../hooks/useBoard.js';
 import { useCursors } from '../../hooks/useCursors.js';
 import { usePresence } from '../../hooks/usePresence.js';
-import { Canvas, type SelectedObject } from './Canvas.js';
+import { Canvas, type SelectedObject, type SceneCenter } from './Canvas.js';
 import { Toolbar } from '../Toolbar/Toolbar.js';
 import { CursorOverlay } from '../Cursors/CursorOverlay.js';
 import { PresencePanel } from '../Presence/PresencePanel.js';
@@ -29,9 +29,14 @@ export function BoardPage(): React.JSX.Element {
   const onlineUsers = usePresence(yjs?.provider ?? null);
 
   const [selectedObject, setSelectedObject] = useState<SelectedObject | null>(null);
+  const getSceneCenterRef = useRef<(() => SceneCenter) | null>(null);
 
   const handleSelectionChange = useCallback((selected: SelectedObject | null) => {
     setSelectedObject(selected);
+  }, []);
+
+  const handleCanvasReady = useCallback((getSceneCenter: () => SceneCenter) => {
+    getSceneCenterRef.current = getSceneCenter;
   }, []);
 
   if (!yjs) {
@@ -49,9 +54,10 @@ export function BoardPage(): React.JSX.Element {
         board={board}
         onCursorMove={updateLocalCursor}
         onSelectionChange={handleSelectionChange}
+        onReady={handleCanvasReady}
       />
       <CursorOverlay cursors={remoteCursors} />
-      <Toolbar board={board} selectedObject={selectedObject} />
+      <Toolbar board={board} selectedObject={selectedObject} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
       <PresencePanel users={onlineUsers} />
       {!yjs.connected && (
         <div style={styles.connectionBanner}>Reconnecting...</div>
