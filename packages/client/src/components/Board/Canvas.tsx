@@ -22,6 +22,7 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
+  const isLocalUpdateRef = useRef(false);
 
   // Keep refs in sync with latest props to avoid stale closures
   // without causing effect re-runs
@@ -104,6 +105,10 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
       const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
       const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
 
+      // Guard: prevent the Yjs observer from re-syncing this object
+      // back to the canvas while we're processing a local edit
+      isLocalUpdateRef.current = true;
+
       boardRef.current.updateObject(id, {
         x: obj.left ?? 0,
         y: obj.top ?? 0,
@@ -111,6 +116,8 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
         height: actualHeight,
         rotation: obj.angle ?? 0,
       });
+
+      isLocalUpdateRef.current = false;
 
       // For Groups (sticky notes), update internal objects to match new size
       if (obj instanceof Group) {
@@ -138,15 +145,7 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
         obj.set({ scaleX: 1, scaleY: 1 });
       }
       obj.setCoords();
-    });
-
-    // Bring object to front on selection (fixes overlap interaction)
-    canvas.on('selection:created', (opt) => {
-      const selected = opt.selected;
-      const first = selected?.[0];
-      if (first) {
-        canvas.bringObjectToFront(first);
-      }
+      canvas.requestRenderAll();
     });
 
     // Handle window resize
@@ -169,6 +168,9 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
     if (!canvas) return;
 
     const syncObjectToCanvas = (id: string, data: BoardObject): void => {
+      // Skip if this change originated from a local object:modified handler
+      if (isLocalUpdateRef.current) return;
+
       isRemoteUpdateRef.current = true;
       const existing = canvas.getObjects().find(
         (obj) => (obj as unknown as { boardId?: string }).boardId === id,
@@ -257,6 +259,7 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
 
           (group as unknown as { boardId: string }).boardId = id;
           canvas.add(group);
+          group.setCoords();
         } else if (data.type === 'rectangle') {
           const rect = new Rect({
             left: data.x,
@@ -270,6 +273,7 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
           });
           (rect as unknown as { boardId: string }).boardId = id;
           canvas.add(rect);
+          rect.setCoords();
         }
         canvas.requestRenderAll();
       }
