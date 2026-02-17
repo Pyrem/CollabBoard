@@ -6,6 +6,7 @@ import {
   Group,
   type TPointerEvent,
   type TPointerEventInfo,
+  type FabricObject,
 } from 'fabric';
 import type * as Y from 'yjs';
 import type { BoardObject, StickyNote, RectangleShape } from '@collabboard/shared';
@@ -32,6 +33,53 @@ interface EditingState {
   screenY: number;
   width: number;
   height: number;
+}
+
+// Helper: get boardId from a Fabric object
+function getBoardId(obj: FabricObject): string | undefined {
+  return (obj as unknown as { boardId?: string }).boardId;
+}
+
+// Helper: set boardId on a Fabric object
+function setBoardId(obj: FabricObject, id: string): void {
+  (obj as unknown as { boardId: string }).boardId = id;
+}
+
+// Helper: create a sticky note Group from data
+function createStickyGroup(stickyData: StickyNote): Group {
+  const bg = new Rect({
+    width: stickyData.width,
+    height: stickyData.height,
+    fill: stickyData.color,
+    rx: 4,
+    ry: 4,
+    stroke: null,
+    strokeWidth: 0,
+  });
+
+  const text = new Textbox(stickyData.text || 'Type here...', {
+    fontSize: 16,
+    fill: '#333',
+    width: stickyData.width - 20,
+    textAlign: 'left',
+    splitByGrapheme: true,
+    stroke: null,
+    strokeWidth: 0,
+  });
+
+  const group = new Group([bg, text], {
+    left: stickyData.x,
+    top: stickyData.y,
+    subTargetCheck: false,
+    interactive: false,
+    // Disable rotation and resize — sticky notes are fixed-size
+    lockRotation: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    hasControls: false,
+  });
+
+  return group;
 }
 
 export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: CanvasProps): React.JSX.Element {
@@ -121,7 +169,7 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
     const notifySelection = (): void => {
       const active = canvas.getActiveObject();
       if (active) {
-        const id = (active as unknown as { boardId?: string }).boardId;
+        const id = getBoardId(active);
         if (id) {
           const data = boardRef.current.getObject(id);
           onSelectionChangeRef.current(data ? { id, type: data.type } : null);
@@ -138,7 +186,7 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
     canvas.on('mouse:dblclick', (opt: TPointerEventInfo<TPointerEvent>) => {
       const target = opt.target;
       if (!target || !(target instanceof Group)) return;
-      const id = (target as unknown as { boardId?: string }).boardId;
+      const id = getBoardId(target);
       if (!id) return;
 
       // Calculate screen position for the textarea overlay
@@ -169,33 +217,37 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
       if (isRemoteUpdateRef.current) return;
       const obj = opt.target;
       if (!obj) return;
-      const id = (obj as unknown as { boardId?: string }).boardId;
+      const id = getBoardId(obj);
       if (!id) return;
-
-      const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
-      const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
 
       // Guard: prevent the Yjs observer from re-syncing this object
       // back to the canvas while we're processing a local edit
       isLocalUpdateRef.current = true;
 
-      boardRef.current.updateObject(id, {
-        x: obj.left ?? 0,
-        y: obj.top ?? 0,
-        width: actualWidth,
-        height: actualHeight,
-        rotation: obj.angle ?? 0,
-      });
+      if (obj instanceof Group) {
+        // Sticky notes: fixed size, only position changes
+        boardRef.current.updateObject(id, {
+          x: obj.left ?? 0,
+          y: obj.top ?? 0,
+        });
+      } else {
+        // Rectangles: can resize
+        const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
+        const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
+
+        boardRef.current.updateObject(id, {
+          x: obj.left ?? 0,
+          y: obj.top ?? 0,
+          width: actualWidth,
+          height: actualHeight,
+        });
+
+        // Normalize scale back to 1 after saving actual dimensions
+        obj.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
+        obj.setCoords();
+      }
 
       isLocalUpdateRef.current = false;
-
-      // Normalize scale back to 1 after saving actual dimensions
-      if (obj instanceof Group) {
-        obj.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
-      } else {
-        obj.set({ scaleX: 1, scaleY: 1 });
-      }
-      obj.setCoords();
       canvas.renderAll();
     });
 
@@ -218,81 +270,50 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
     const canvas = fabricRef.current;
     if (!canvas) return;
 
+    const findByBoardId = (id: string): FabricObject | undefined =>
+      canvas.getObjects().find((obj) => getBoardId(obj) === id);
+
     const syncObjectToCanvas = (id: string, data: BoardObject): void => {
       // Skip if this change originated from a local object:modified handler
       if (isLocalUpdateRef.current) return;
 
       isRemoteUpdateRef.current = true;
-      const existing = canvas.getObjects().find(
-        (obj) => (obj as unknown as { boardId?: string }).boardId === id,
-      );
+      const existing = findByBoardId(id);
 
       if (existing) {
-        // Update existing object position/rotation
-        existing.set({
-          left: data.x,
-          top: data.y,
-          angle: data.rotation,
-          scaleX: 1,
-          scaleY: 1,
-        });
-
-        if (data.type === 'sticky' && existing instanceof Group) {
-          const stickyData = data as StickyNote;
-          const items = existing.getObjects();
-          // Only update content properties — do NOT manually reposition
-          // sub-objects as that conflicts with Fabric's Group layout manager
-          const bgRect = items[0];
-          if (bgRect instanceof Rect) {
-            bgRect.set('fill', stickyData.color);
+        if (data.type === 'sticky') {
+          // Recreate sticky note Group entirely on every update.
+          // This avoids all Fabric.js Group layout manager issues —
+          // sub-objects are always positioned correctly by a fresh layout pass.
+          const wasActive = canvas.getActiveObject() === existing;
+          canvas.remove(existing);
+          const group = createStickyGroup(data as StickyNote);
+          setBoardId(group, id);
+          canvas.add(group);
+          group.setCoords();
+          if (wasActive) {
+            canvas.setActiveObject(group);
           }
-          const textObj = items[1];
-          if (textObj instanceof Textbox) {
-            textObj.set('text', stickyData.text || 'Type here...');
-          }
-          // Invalidate Group's render cache so sub-object changes are painted
-          existing.dirty = true;
         } else if (data.type === 'rectangle' && existing instanceof Rect) {
           const rectData = data as RectangleShape;
           existing.set({
+            left: rectData.x,
+            top: rectData.y,
             width: rectData.width,
             height: rectData.height,
+            scaleX: 1,
+            scaleY: 1,
           });
           existing.set('fill', rectData.fill || DEFAULT_FILL);
           existing.set('stroke', rectData.stroke || DEFAULT_STROKE);
+          existing.setCoords();
         }
-        existing.setCoords();
         canvas.renderAll();
       } else {
         // Create new object on canvas
         if (data.type === 'sticky') {
-          const stickyData = data as StickyNote;
-          const bg = new Rect({
-            width: stickyData.width,
-            height: stickyData.height,
-            fill: stickyData.color,
-            rx: 4,
-            ry: 4,
-            strokeWidth: 0,
-          });
-
-          const text = new Textbox(stickyData.text || 'Type here...', {
-            fontSize: 16,
-            fill: '#333',
-            width: stickyData.width - 20,
-            textAlign: 'left',
-            splitByGrapheme: true,
-          });
-
-          const group = new Group([bg, text], {
-            left: stickyData.x,
-            top: stickyData.y,
-            angle: stickyData.rotation,
-            subTargetCheck: false,
-            interactive: false,
-          });
-
-          (group as unknown as { boardId: string }).boardId = id;
+          const group = createStickyGroup(data as StickyNote);
+          setBoardId(group, id);
           canvas.add(group);
           group.setCoords();
         } else if (data.type === 'rectangle') {
@@ -305,12 +326,15 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
             width: rectData.width,
             height: rectData.height,
             strokeWidth: 2,
-            angle: rectData.rotation,
+            // Disable rotation
+            lockRotation: true,
           });
           rect.set('fill', fillColor);
           rect.set('stroke', strokeColor);
           rect.dirty = true;
-          (rect as unknown as { boardId: string }).boardId = id;
+          // Hide the rotation control
+          rect.setControlVisible('mtr', false);
+          setBoardId(rect, id);
           canvas.add(rect);
           rect.setCoords();
         }
@@ -321,10 +345,7 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange }: C
 
     const removeObjectFromCanvas = (id: string): void => {
       isRemoteUpdateRef.current = true;
-      const toRemove = canvas.getObjects().filter((obj) => {
-        const bObj = obj as unknown as { boardId?: string };
-        return bObj.boardId === id;
-      });
+      const toRemove = canvas.getObjects().filter((obj) => getBoardId(obj) === id);
       toRemove.forEach((obj) => canvas.remove(obj));
       canvas.renderAll();
       isRemoteUpdateRef.current = false;
