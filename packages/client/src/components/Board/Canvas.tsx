@@ -8,8 +8,9 @@ import {
   type TPointerEventInfo,
 } from 'fabric';
 import type * as Y from 'yjs';
-import type { BoardObject, StickyNote } from '@collabboard/shared';
+import type { BoardObject, StickyNote, RectangleShape } from '@collabboard/shared';
 import type { CursorPosition } from '@collabboard/shared';
+import { DEFAULT_FILL, DEFAULT_STROKE } from '@collabboard/shared';
 import type { useBoard } from '../../hooks/useBoard.js';
 
 interface CanvasProps {
@@ -209,11 +210,12 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
           }
           existing.set({ width: data.width, height: data.height });
         } else if (data.type === 'rectangle' && existing instanceof Rect) {
+          const rectData = data as RectangleShape;
           existing.set({
-            width: data.width,
-            height: data.height,
-            fill: data.fill,
-            stroke: data.stroke,
+            width: rectData.width,
+            height: rectData.height,
+            fill: rectData.fill || DEFAULT_FILL,
+            stroke: rectData.stroke || DEFAULT_STROKE,
           });
         }
         existing.setCoords();
@@ -231,6 +233,8 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
             strokeWidth: 0,
             originX: 'center',
             originY: 'center',
+            selectable: false,
+            evented: false,
           });
 
           const text = new Textbox(stickyData.text || 'Type here...', {
@@ -241,6 +245,10 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
             originY: 'center',
             textAlign: 'left',
             splitByGrapheme: true,
+            lockMovementX: true,
+            lockMovementY: true,
+            hasControls: false,
+            hasBorders: false,
           });
 
           text.on('changed', () => {
@@ -261,15 +269,16 @@ export function Canvas({ objectsMap, board, onCursorMove }: CanvasProps): React.
           canvas.add(group);
           group.setCoords();
         } else if (data.type === 'rectangle') {
+          const rectData = data as RectangleShape;
           const rect = new Rect({
-            left: data.x,
-            top: data.y,
-            width: data.width,
-            height: data.height,
-            fill: data.fill,
-            stroke: data.stroke,
+            left: rectData.x,
+            top: rectData.y,
+            width: rectData.width,
+            height: rectData.height,
+            fill: rectData.fill || DEFAULT_FILL,
+            stroke: rectData.stroke || DEFAULT_STROKE,
             strokeWidth: 2,
-            angle: data.rotation,
+            angle: rectData.rotation,
           });
           (rect as unknown as { boardId: string }).boardId = id;
           canvas.add(rect);
