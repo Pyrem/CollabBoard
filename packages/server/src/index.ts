@@ -1,24 +1,24 @@
 import 'dotenv/config';
+import { createServer } from 'node:http';
 import express from 'express';
 import cors from 'cors';
 import { Server } from '@hocuspocus/server';
 import { Database } from '@hocuspocus/extension-database';
+import { WebSocketServer } from 'ws';
 import { onAuthenticate } from './hocuspocus/onAuthenticate.js';
 import { loadDocument, storeDocument, setupDatabase } from './hocuspocus/database.js';
 import { aiCommandHandler } from './ai/handler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
 
-const HOCUSPOCUS_PORT = parseInt(process.env['HOCUSPOCUS_PORT'] ?? '1234', 10);
-const EXPRESS_PORT = parseInt(process.env['EXPRESS_PORT'] ?? '3001', 10);
+const PORT = parseInt(process.env['PORT'] ?? '3001', 10);
 const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? 'http://localhost:5173';
 
 // Initialize SQLite database for persistence
 const db = setupDatabase();
 
-// Hocuspocus WebSocket server
+// Hocuspocus server (no standalone listen — we handle upgrades manually)
 const hocuspocus = Server.configure({
-  port: HOCUSPOCUS_PORT,
   onAuthenticate,
   extensions: [
     new Database({
@@ -47,13 +47,19 @@ app.get('/api/health', (_req, res) => {
 
 app.post('/api/ai-command', createRateLimiter(), authMiddleware, aiCommandHandler(hocuspocus));
 
-// Start servers
-void hocuspocus.listen().then(() => {
-  console.log(`[HOCUS] Hocuspocus running on port ${String(HOCUSPOCUS_PORT)}`);
+// Single HTTP server for both Express and WebSocket
+const httpServer = createServer(app);
+const wss = new WebSocketServer({ noServer: true });
+
+// Handle WebSocket upgrade — hand off to Hocuspocus
+httpServer.on('upgrade', (request, socket, head) => {
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    hocuspocus.handleConnection(ws, request);
+  });
 });
 
-app.listen(EXPRESS_PORT, () => {
-  console.log(`[EXPRESS] API server running on port ${String(EXPRESS_PORT)}`);
+httpServer.listen(PORT, () => {
+  console.log(`[SERVER] HTTP + WebSocket running on port ${String(PORT)}`);
 });
 
 export { hocuspocus, app };
