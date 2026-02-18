@@ -19,7 +19,12 @@ export function useYjs(boardId: string): UseYjsReturn | null {
     ref.current = { doc, provider };
 
     provider.on('status', ({ status }: { status: string }) => {
+      console.log('[YJS] Connection status:', status);
       setConnected(status === 'connected');
+    });
+
+    provider.on('close', ({ event }: { event: CloseEvent }) => {
+      console.log('[YJS] WebSocket closed:', event.code, event.reason);
     });
 
     return () => {

@@ -4,6 +4,8 @@ import { getIdToken } from './firebase.js';
 
 const HOCUSPOCUS_URL = (import.meta.env['VITE_HOCUSPOCUS_URL'] as string) ?? 'ws://localhost:1234';
 
+console.log('[YJS] Connecting to Hocuspocus at:', HOCUSPOCUS_URL);
+
 export function createYjsProvider(boardId: string): {
   doc: Y.Doc;
   provider: HocuspocusProvider;
