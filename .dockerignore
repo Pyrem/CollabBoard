@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.local
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite-journal
+.git
+.vercel
+.fly
+coverage
+*.tsbuildinfo
+CollabBoard_PreSearch.pdf

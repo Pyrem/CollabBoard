@@ -1,0 +1,58 @@
+app = 'collabboard-server'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile'
+  # Dockerfile expects workspace root as build context
+  # Deploy with: fly deploy --config packages/server/fly.toml --dockerfile packages/server/Dockerfile .
+
+[env]
+  NODE_ENV = 'production'
+  HOCUSPOCUS_PORT = '1234'
+  EXPRESS_PORT = '3001'
+  DB_PATH = '/data/collabboard.sqlite'
+
+# Persistent volume for SQLite data
+[mounts]
+  source = 'collabboard_data'
+  destination = '/data'
+
+# HTTP service (Express API)
+[[services]]
+  protocol = 'tcp'
+  internal_port = 3001
+
+  [[services.ports]]
+    port = 443
+    handlers = ['tls', 'http']
+
+  [[services.ports]]
+    port = 80
+    handlers = ['http']
+
+  [services.concurrency]
+    type = 'connections'
+    hard_limit = 100
+    soft_limit = 80
+
+  [[services.http_checks]]
+    interval = 15000
+    grace_period = '10s'
+    method = 'get'
+    path = '/api/health'
+    protocol = 'http'
+    timeout = 5000
+
+# WebSocket service (Hocuspocus)
+[[services]]
+  protocol = 'tcp'
+  internal_port = 1234
+
+  [[services.ports]]
+    port = 8080
+    handlers = ['tls', 'http']
+
+  [services.concurrency]
+    type = 'connections'
+    hard_limit = 200
+    soft_limit = 150
