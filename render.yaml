@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: collabboard-server
+    runtime: docker
+    dockerfilePath: packages/server/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /data/collabboard.sqlite
+      - key: CORS_ORIGIN
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+    disk:
+      name: collabboard-data
+      mountPath: /data
+      sizeGB: 1

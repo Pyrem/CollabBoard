@@ -45,15 +45,11 @@ COPY --from=builder /app/packages/server/dist packages/server/dist
 COPY --from=builder /app/packages/shared/package.json packages/shared/package.json
 COPY --from=builder /app/packages/server/package.json packages/server/package.json
 
-# SQLite data lives on a persistent Fly volume
+# SQLite data directory (mount a persistent disk here in production)
 RUN mkdir -p /data
 
 ENV NODE_ENV=production
-ENV HOCUSPOCUS_PORT=1234
-ENV EXPRESS_PORT=3001
-
-# Expose both ports
-EXPOSE 1234 3001
+# PORT is injected by Render at runtime
 
 WORKDIR /app/packages/server
 
