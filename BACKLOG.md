@@ -48,6 +48,7 @@
 | SEL-001 | Multi-select — shift-click, drag-to-select, bulk delete/duplicate/copy-paste | 5 | P2 | Fabric activeSelection + Yjs batch updates |
 | AI-001 | AI agent basic — 6+ command types, single-step tool use | 8 | P2 | Express POST /api/ai-command, Claude Sonnet 4.5, direct Yjs doc writes |
 | AI-002 | AI agent complex — multi-step templates (SWOT, journey map, retro board) | 8 | P3 | Builds on AI-001, multi-turn tool use |
+| PERF-001 | Fabric object index — replace linear canvas scan with Map\<string, FabricObject\> | 2 | P1 | Client-side only. findByBoardId currently scans all canvas objects O(n). With RT-001 increasing lookup frequency ~20x, this becomes relevant at 500+ objects. Maintain a Map alongside canvas add/remove. |
 | POL-001 | Error handling + loading states | 3 | P2 | Connection loss recovery, optimistic UI, toast notifications |
 | POL-002 | UI cleanup — toolbar polish, responsive layout | 3 | P3 | |
 | DOC-001 | README, demo video, social post | 2 | P3 | 3-5 min video |
