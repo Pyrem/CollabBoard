@@ -58,6 +58,24 @@ export function attachLocalModifications(
     if (isRemoteUpdateRef.current) return;
     const obj = opt.target;
     if (!obj) return;
+
+    // When an ActiveSelection is scaled, counteract the group scale on
+    // Group children (sticky notes) so they stay fixed-size visually.
+    if (obj instanceof ActiveSelection) {
+      const groupScaleX = obj.scaleX ?? 1;
+      const groupScaleY = obj.scaleY ?? 1;
+      for (const child of obj.getObjects()) {
+        if (child instanceof Group) {
+          child.set({
+            scaleX: 1 / groupScaleX,
+            scaleY: 1 / groupScaleY,
+          });
+        }
+      }
+      canvas.requestRenderAll();
+      return;
+    }
+
     const id = getBoardId(obj);
     if (!id) return;
 
@@ -135,7 +153,10 @@ export function attachLocalModifications(
         localUpdateIdsRef.current.add(childId);
 
         if (child instanceof Group) {
-          // Sticky notes: position + rotation only (fixed-size)
+          // Sticky notes: position + rotation only (fixed-size).
+          // Reset any residual scale from group transform.
+          child.set({ scaleX: 1, scaleY: 1 });
+          child.setCoords();
           updates.push({
             id: childId,
             updates: {
