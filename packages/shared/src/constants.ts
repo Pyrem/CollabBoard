@@ -26,17 +26,45 @@ export const DEFAULT_FILL = '#4CAF50';
 export const DEFAULT_STROKE = '#000000';
 export const DEFAULT_STROKE_WIDTH = 2;
 
-// Cursor
-export const CURSOR_THROTTLE_MS = 30;
+// Consolidated throttle configuration
+export const THROTTLE = {
+  CURSOR_MS: 30,          // normal cursor broadcast interval
+  CURSOR_HEAVY_MS: 100,   // cursor during heavy operations (group drag)
+  BASE_MS: 50,            // single-object sync minimum
+  PER_SHAPE_MS: 2,        // added per selected shape in a group operation
+  MAX_MS: 500,            // absolute cap for adaptive throttle
+  COLOR_CHANGE_MS: 100,   // color picker debounce
+} as const;
 
-// Object sync throttle (base rate for intermediate updates during drag/resize)
-export const OBJECT_SYNC_THROTTLE_MS = 50;
+/**
+ * Compute an adaptive throttle interval based on connected user count and
+ * the number of objects in the current selection.
+ *
+ * More users or larger selections → higher throttle to reduce network load.
+ * Capped at {@link THROTTLE.MAX_MS}.
+ */
+export function getAdaptiveThrottleMs(
+  userCount: number,
+  selectionSize: number,
+): number {
+  let base: number;
+  if (userCount <= 5) base = 50;
+  else if (userCount <= 10) base = 100;
+  else base = 200;
+  return Math.min(base + THROTTLE.PER_SHAPE_MS * selectionSize, THROTTLE.MAX_MS);
+}
 
-// Adaptive throttle: scales with connected user count to reduce network load
+// --- Deprecated aliases (kept so existing call sites compile) ---
+
+/** @deprecated Use THROTTLE.CURSOR_MS */
+export const CURSOR_THROTTLE_MS = THROTTLE.CURSOR_MS;
+
+/** @deprecated Use getAdaptiveThrottleMs */
+export const OBJECT_SYNC_THROTTLE_MS = THROTTLE.BASE_MS;
+
+/** @deprecated Use getAdaptiveThrottleMs */
 export function getObjectSyncThrottle(userCount: number): number {
-  if (userCount <= 5) return 50;
-  if (userCount <= 10) return 100;
-  return 200;
+  return getAdaptiveThrottleMs(userCount, 1);
 }
 
 // Presence colors assigned to users

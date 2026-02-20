@@ -31,7 +31,7 @@ export function attachLocalModifications(
     const id = getBoardId(obj);
     if (!id) return;
 
-    const now = Date.now();
+    const now = performance.now();
     const lastSync = lastObjectSyncRef.current[id] ?? 0;
     if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
     lastObjectSyncRef.current[id] = now;
@@ -52,7 +52,7 @@ export function attachLocalModifications(
     const id = getBoardId(obj);
     if (!id) return;
 
-    const now = Date.now();
+    const now = performance.now();
     const lastSync = lastObjectSyncRef.current[id] ?? 0;
     if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
     lastObjectSyncRef.current[id] = now;
@@ -78,7 +78,7 @@ export function attachLocalModifications(
     const id = getBoardId(obj);
     if (!id) return;
 
-    const now = Date.now();
+    const now = performance.now();
     const lastSync = lastObjectSyncRef.current[id] ?? 0;
     if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
     lastObjectSyncRef.current[id] = now;

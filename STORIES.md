@@ -381,3 +381,291 @@ Story 7 benefits from all object types being implemented first.
 4. Story 5 (Frames — moderate complexity, z-index management)
 5. Story 3 (Connectors — most complex, needs endpoint tracking)
 6. Story 7 (Copy/Paste — best done last, covers all types)
+
+---
+---
+
+# Throttling & Batch Operations — Implementation Stories
+
+Tracks the incremental implementation of the plan described in `PLAN.md`.
+Each story is independently testable. Stories should be completed and verified
+before moving to the next (unless explicitly marked as independent).
+
+---
+
+## TB Dependency Graph
+
+```
+TB-Story 1 (throttle config + perf.now + logger)
+  ├─→ TB-Story 2 (batch ops in useBoard)
+  │     ├─→ TB-Story 3 (multi-delete)
+  │     └─→ TB-Story 4 (ActiveSelection decomposition)
+  │           └─→ TB-Story 5 (adaptive throttle for group events)
+  ├─→ TB-Story 6 (two-tier cursor throttle)  [independent of 2–5]
+  └─→ TB-Story 7 (color change throttle)     [independent of 2–6]
+```
+
+---
+
+## TB-Story 1: Consolidate throttle config + `performance.now()` + logger
+
+**Goal:** Single source of truth for all throttle constants, monotonic clock for
+throttle checks, and a lightweight structured logger for tracing activity.
+
+### Tasks
+
+1. **`packages/shared/src/constants.ts`**
+   - Add `THROTTLE` object with `CURSOR_MS`, `CURSOR_HEAVY_MS`, `BASE_MS`,
+     `PER_SHAPE_MS`, `MAX_MS`, `COLOR_CHANGE_MS`.
+   - Add `getAdaptiveThrottleMs(userCount, selectionSize)`.
+   - Keep `CURSOR_THROTTLE_MS`, `OBJECT_SYNC_THROTTLE_MS`, `getObjectSyncThrottle`
+     as deprecated aliases pointing at the new values.
+
+2. **`packages/shared/src/logger.ts`** (new file)
+   - Namespace-based structured logger (`throttle`, `batch`, `sync`, `cursor`,
+     `selection`).
+   - Levels: `debug`, `info`, `warn`, `error`.
+   - `debug` gated by `localStorage` (client) or `COLLABBOARD_DEBUG` env var
+     (server/Node).
+   - Re-export from `packages/shared/src/index.ts`.
+
+3. **`packages/client/src/hooks/useCursors.ts`**
+   - Replace `Date.now()` with `performance.now()` in throttle check.
+
+4. **`packages/client/src/components/Board/canvas/localModifications.ts`**
+   - Replace `Date.now()` with `performance.now()` in all three throttle checks
+     (moving, scaling, rotating).
+
+### Checkpoint
+
+- `pnpm build` passes with no errors.
+- Existing single-object drag/rotate/scale works identically in the browser.
+- Open two browser windows — sync latency unchanged.
+- Setting `localStorage.setItem('collabboard:debug', 'true')` in devtools
+  causes throttle-related debug logs to appear in the console.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `packages/shared/src/constants.ts` | `THROTTLE` object, `getAdaptiveThrottleMs`, deprecated aliases |
+| `packages/shared/src/logger.ts` | New file — structured logger |
+| `packages/shared/src/index.ts` | Re-export logger |
+| `packages/client/src/hooks/useCursors.ts` | `performance.now()` swap |
+| `packages/client/src/components/Board/canvas/localModifications.ts` | `performance.now()` swap |
+
+---
+
+## TB-Story 2: Batch operations in `useBoard`
+
+**Goal:** `batchUpdateObjects`, `batchDeleteObjects`, `batchCreateObjects` —
+all wrapping `doc.transact()` to collapse N mutations into one sync message.
+
+### Tasks
+
+1. Add `batchUpdateObjects(updates: Array<{ id: string; updates: Partial<BoardObject> }>)` to `useBoard`.
+2. Add `batchDeleteObjects(ids: string[])` to `useBoard`.
+3. Add `batchCreateObjects(objects: BoardObject[])` to `useBoard`.
+4. Update `UseBoardReturn` interface.
+5. Add tests in `useBoard.test.ts` — verify that calling `batchUpdateObjects`
+   with 5 updates fires only **one** Yjs update event.
+
+### Checkpoint
+
+- Unit tests pass: `pnpm --filter @collabboard/client test`.
+- Existing single-object CRUD still works in the browser.
+- Log output shows batch operation counts when debug logging is enabled.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `packages/client/src/hooks/useBoard.ts` | Three new batch methods |
+| `packages/client/src/hooks/useBoard.test.ts` | Tests for batch operations |
+
+---
+
+## TB-Story 3: Multi-delete via ActiveSelection
+
+**Goal:** Shift-click multiple objects, press Delete — all removed in one sync event.
+
+### Tasks
+
+1. In `selectionManager.ts`, detect `ActiveSelection` on Delete/Backspace.
+2. Collect all `boardId`s from the selection's children.
+3. Call `batchDeleteObjects(ids)`.
+4. Discard active object and fire selection change callback.
+
+### Checkpoint
+
+- Shift-click two objects, press Delete. Both disappear.
+- Second browser window confirms both vanish simultaneously (one sync event).
+- Single-object delete still works as before.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `packages/client/src/components/Board/canvas/selectionManager.ts` | ActiveSelection multi-delete |
+| `packages/client/src/components/Board/Canvas.tsx` | Wire `batchDeleteObjects` to selectionManager if needed |
+
+---
+
+## TB-Story 4: ActiveSelection decomposition in `object:modified`
+
+**Goal:** When multiple selected objects are moved/resized/rotated together,
+decompose the group transform and batch-update all objects on mouse-up.
+
+### Tasks
+
+1. Import `ActiveSelection` and `util` from Fabric.
+2. In `object:modified`, add an `ActiveSelection` branch.
+3. Decompose each child's transform via `calcTransformMatrix()` + `util.qrDecompose()`.
+4. Call `batchUpdateObjects` with all decomposed positions/sizes/rotations.
+5. Reset scale on each child and call `setCoords()`.
+
+### Checkpoint
+
+- Select 3 objects, drag as group, release. Second browser shows all 3 at
+  correct final positions.
+- Select 2 objects, resize via handles, release. Dimensions correct on both browsers.
+- Single-object modify still works.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `packages/client/src/components/Board/canvas/localModifications.ts` | ActiveSelection decomposition in `object:modified` |
+| `packages/client/src/components/Board/Canvas.tsx` | Pass `batchUpdateObjects` through if needed |
+
+---
+
+## TB-Story 5: Adaptive throttle for intermediate group events
+
+**Goal:** During group drag, use `getAdaptiveThrottleMs(userCount, selectionSize)`
+for intermediate broadcasts. Only preview-broadcast one object's position, not all N.
+
+### Tasks
+
+1. In `object:moving`, `object:scaling`, `object:rotating`, detect `ActiveSelection`.
+2. Compute `selectionSize = obj.getObjects().length`.
+3. Use `getAdaptiveThrottleMs(userCountRef.current, selectionSize)` instead of
+   `getObjectSyncThrottle(userCountRef.current)`.
+4. For group drags, only broadcast the lead object's position as a preview.
+
+### Checkpoint
+
+- Select 10+ objects, drag. FPS stays at 60. Console shows adaptive throttle
+  values increasing with selection size (debug logs).
+- Second browser sees movement preview during drag.
+- On mouse-up, TB-Story 4's handler snaps everything to final positions.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `packages/client/src/components/Board/canvas/localModifications.ts` | Selection-aware adaptive throttle in intermediate events |
+
+---
+
+## TB-Story 6: Two-tier cursor throttle
+
+**Goal:** Reduce cursor broadcast rate during heavy operations (group drag).
+
+### Tasks
+
+1. Add `heavy?: boolean` parameter to `updateLocalCursor`.
+2. Use `THROTTLE.CURSOR_HEAVY_MS` (100ms) when `heavy` is true, else `THROTTLE.CURSOR_MS` (30ms).
+3. Update `UseCursorsReturn` interface.
+4. Wire callers to pass `heavy: true` during group drag operations.
+
+### Checkpoint
+
+- Open WebSocket frame inspector. During single-object drag, cursor updates at
+  ~30ms intervals. During group drag, cursor updates at ~100ms intervals.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `packages/client/src/hooks/useCursors.ts` | `heavy` parameter, two-tier throttle |
+| `packages/client/src/components/Board/canvas/panZoom.ts` | Pass `heavy` flag when appropriate |
+
+---
+
+## TB-Story 7: Color change throttle
+
+**Goal:** Prevent rapid color picker clicks from flooding Yjs with updates.
+
+### Tasks
+
+1. Add `lastColorChangeRef` in Toolbar component.
+2. Gate color change calls with `THROTTLE.COLOR_CHANGE_MS` (100ms) debounce.
+
+### Checkpoint
+
+- Rapidly click through 6 colors in <200ms. Only ~2 Yjs updates fire.
+- Normal-speed color picking works without noticeable delay.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `packages/client/src/components/Toolbar/Toolbar.tsx` | Color change throttle |
+
+---
+
+## Logging Strategy
+
+### Design
+
+A lightweight structured logger in `packages/shared/src/logger.ts`, shared by
+client and server. Not a framework — a thin wrapper providing consistent
+output without ad-hoc `console.log` calls scattered across the codebase.
+
+### Namespaces
+
+| Namespace | Purpose | Example output |
+|-----------|---------|----------------|
+| `throttle` | Throttle decisions (accepted/rejected) | `[throttle] object:moving id=abc skipped (12ms < 50ms)` |
+| `batch` | Batch operation execution | `[batch] batchUpdateObjects: 5 objects in 1 transaction` |
+| `sync` | Yjs sync events (observer fires) | `[sync] remote update: 3 objects changed` |
+| `cursor` | Cursor broadcast/receive | `[cursor] broadcast position heavy=false interval=30ms` |
+| `selection` | Selection changes, multi-select | `[selection] ActiveSelection: 4 objects` |
+
+### Levels
+
+| Level | When | Default state |
+|-------|------|---------------|
+| `debug` | Throttle skip/accept, individual sync events | **OFF** |
+| `info` | Batch operations, connection events | ON |
+| `warn` | Validation failures, unexpected states | ON |
+| `error` | Unrecoverable errors | ON |
+
+### Activation
+
+- **Browser:** `localStorage.setItem('collabboard:debug', 'true')` then refresh.
+  Or `localStorage.setItem('collabboard:debug', 'throttle,cursor')` for specific
+  namespaces only.
+- **Server (Node):** `COLLABBOARD_DEBUG=true` env var. Or `COLLABBOARD_DEBUG=throttle,cursor`.
+
+### API
+
+```typescript
+import { logger } from '@collabboard/shared';
+
+const log = logger('throttle');
+
+log.debug('object:moving skipped', { id, elapsed, threshold });
+log.info('adaptive throttle', { userCount, selectionSize, result });
+log.warn('unknown object type', { type });
+log.error('batch update failed', { error });
+```
+
+### Principles
+
+- Zero dependencies — wraps `console.*`.
+- Structured data passed as second argument (object), not stringified — browser
+  devtools show it expandable.
+- No performance cost when disabled — level check is a single boolean comparison.
+- Server-compatible — detects `localStorage` vs `process.env` automatically.

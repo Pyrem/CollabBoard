@@ -76,7 +76,7 @@ export function useCursors(
   const updateLocalCursor = useCallback(
     (position: CursorPosition): void => {
       if (!provider) return;
-      const now = Date.now();
+      const now = performance.now();
       if (now - lastUpdateRef.current < CURSOR_THROTTLE_MS) return;
       lastUpdateRef.current = now;
 
