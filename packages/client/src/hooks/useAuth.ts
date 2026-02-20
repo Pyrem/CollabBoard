@@ -22,8 +22,3 @@ export function useAuthState(): AuthState {
 
   return { user, loading };
 }
-
-export function useRequireAuth(): { user: User; loading: boolean } | { user: null; loading: boolean } {
-  const { user, loading } = useAuthState();
-  return { user, loading };
-}
