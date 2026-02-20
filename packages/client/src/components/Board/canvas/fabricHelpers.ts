@@ -256,12 +256,15 @@ export function getFrameContent(obj: FabricObject): { title: string; fill: strin
  *   Caller must call {@link setBoardId} and {@link setFrameContent} on it.
  */
 export function createFrameFromData(frameData: Frame): Group {
+  // Frame bg has transparent fill so perPixelTargetFind only detects the
+  // dashed border stroke and title text — clicks on the interior pass
+  // through to objects stacked on top (Miro-style behaviour).
   const bg = new Rect({
     width: frameData.width,
     height: frameData.height,
-    fill: frameData.fill || 'rgba(200, 200, 200, 0.15)',
+    fill: 'transparent',
     stroke: '#999',
-    strokeWidth: 1,
+    strokeWidth: 2,
     rx: 4,
     ry: 4,
     strokeDashArray: [6, 4],
@@ -284,6 +287,7 @@ export function createFrameFromData(frameData: Frame): Group {
     angle: frameData.rotation,
     subTargetCheck: false,
     interactive: false,
+    perPixelTargetFind: true,
     // Frames are resizable — no lockScaling
   });
 
