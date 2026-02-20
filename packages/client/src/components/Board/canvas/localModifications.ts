@@ -422,31 +422,42 @@ export function attachLocalModifications(
     if (obj instanceof Group) {
       const boardData = boardRef.current.getObject(id);
       if (boardData?.type === 'frame') {
-        // Frames are resizable — compute actual dimensions from scale
-        const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
-        const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
+        const wasResized = Math.abs((obj.scaleX ?? 1) - 1) > 0.001 || Math.abs((obj.scaleY ?? 1) - 1) > 0.001;
 
-        boardRef.current.updateObject(id, {
-          x: obj.left ?? 0,
-          y: obj.top ?? 0,
-          width: actualWidth,
-          height: actualHeight,
-          rotation: obj.angle ?? 0,
-        });
+        if (wasResized) {
+          // Frames are resizable — compute actual dimensions from scale
+          const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
+          const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
 
-        // Normalise scale and reconstruct the Group
-        obj.set({ scaleX: 1, scaleY: 1 });
-        obj.setCoords();
+          boardRef.current.updateObject(id, {
+            x: obj.left ?? 0,
+            y: obj.top ?? 0,
+            width: actualWidth,
+            height: actualHeight,
+            rotation: obj.angle ?? 0,
+          });
 
-        const frameData = boardRef.current.getObject(id);
-        if (frameData?.type === 'frame') {
-          canvas.remove(obj);
-          const newGroup = createFrameFromData(frameData as Frame);
-          setBoardId(newGroup, id);
-          setFrameContent(newGroup, (frameData as Frame).title, (frameData as Frame).fill, frameData.width, frameData.height);
-          canvas.add(newGroup);
-          canvas.sendObjectToBack(newGroup);
-          newGroup.setCoords();
+          // Normalise scale and reconstruct the Group
+          obj.set({ scaleX: 1, scaleY: 1 });
+          obj.setCoords();
+
+          const frameData = boardRef.current.getObject(id);
+          if (frameData?.type === 'frame') {
+            canvas.remove(obj);
+            const newGroup = createFrameFromData(frameData as Frame);
+            setBoardId(newGroup, id);
+            setFrameContent(newGroup, (frameData as Frame).title, (frameData as Frame).fill, frameData.width, frameData.height);
+            canvas.add(newGroup);
+            canvas.sendObjectToBack(newGroup);
+            newGroup.setCoords();
+          }
+        } else {
+          // Position/rotation-only change — no reconstruction needed
+          boardRef.current.updateObject(id, {
+            x: obj.left ?? 0,
+            y: obj.top ?? 0,
+            rotation: obj.angle ?? 0,
+          });
         }
       } else {
         // Sticky notes: position + rotation (fixed-size, no scale normalisation)

@@ -287,10 +287,12 @@ export function createFrameFromData(frameData: Frame): Group {
     // Frames are resizable — no lockScaling
   });
 
-  const halfW = group.width / 2;
-  const halfH = group.height / 2;
-  bg.set({ left: -halfW, top: -halfH, width: group.width, height: group.height });
-  title.set({ left: -halfW + 10, top: -halfH + 8, width: group.width - 20 });
+  // Use the explicit data dimensions — NOT group.width/height which includes
+  // strokeWidth and can drift larger on each reconstruction cycle.
+  const halfW = frameData.width / 2;
+  const halfH = frameData.height / 2;
+  bg.set({ left: -halfW, top: -halfH, width: frameData.width, height: frameData.height });
+  title.set({ left: -halfW + 10, top: -halfH + 8, width: frameData.width - 20 });
   group.dirty = true;
 
   return group;
