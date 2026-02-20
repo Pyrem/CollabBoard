@@ -1,4 +1,4 @@
-import { Canvas as FabricCanvas } from 'fabric';
+import { Canvas as FabricCanvas, ActiveSelection } from 'fabric';
 import type { RefObject, MutableRefObject } from 'react';
 import type { useBoard } from '../../../hooks/useBoard.js';
 import type { SelectedObject, EditingState } from '../Canvas.js';
@@ -40,12 +40,28 @@ export function attachSelectionManager(
 
     const active = canvas.getActiveObject();
     if (!active) return;
-    const id = getBoardId(active);
-    if (!id) return;
 
     e.preventDefault();
-    canvas.discardActiveObject();
-    boardRef.current.deleteObject(id);
+
+    if (active instanceof ActiveSelection) {
+      // Multi-delete: collect all boardIds from the selection's children
+      const ids: string[] = [];
+      for (const child of active.getObjects()) {
+        const childId = getBoardId(child);
+        if (childId) ids.push(childId);
+      }
+      canvas.discardActiveObject();
+      if (ids.length > 0) {
+        boardRef.current.batchDeleteObjects(ids);
+      }
+    } else {
+      // Single-delete
+      const id = getBoardId(active);
+      if (!id) return;
+      canvas.discardActiveObject();
+      boardRef.current.deleteObject(id);
+    }
+
     onSelectionChangeRef.current(null);
   };
 
