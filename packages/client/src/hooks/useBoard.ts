@@ -15,9 +15,12 @@ import {
   DEFAULT_FILL,
   DEFAULT_STROKE,
   MAX_OBJECTS_PER_BOARD,
+  logger,
 } from '@collabboard/shared';
 
-interface UseBoardReturn {
+const log = logger('batch');
+
+export interface UseBoardReturn {
   createStickyNote: (x: number, y: number, text?: string, color?: string) => string | null;
   createRectangle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string | null;
   updateObject: (id: string, updates: Partial<BoardObject>) => void;
@@ -26,6 +29,9 @@ interface UseBoardReturn {
   getAllObjects: () => BoardObject[];
   getObjectCount: () => number;
   clearAll: () => void;
+  batchUpdateObjects: (updates: Array<{ id: string; updates: Partial<BoardObject> }>) => void;
+  batchDeleteObjects: (ids: string[]) => void;
+  batchCreateObjects: (objects: BoardObject[]) => void;
 }
 
 /**
@@ -173,5 +179,87 @@ export function useBoard(
     });
   }, [objectsMap]);
 
-  return { createStickyNote, createRectangle, updateObject, deleteObject, getObject, getAllObjects, getObjectCount, clearAll };
+  /**
+   * Update multiple objects in a single Yjs transaction.
+   * Collapses N mutations into one WebSocket message.
+   */
+  const batchUpdateObjects = useCallback(
+    (updates: Array<{ id: string; updates: Partial<BoardObject> }>): void => {
+      if (!objectsMap) return;
+      const doc = objectsMap.doc;
+      if (!doc) return;
+      log.debug('batchUpdateObjects', { count: updates.length });
+      doc.transact(() => {
+        for (const { id, updates: partial } of updates) {
+          const existing = objectsMap.get(id) as BoardObject | undefined;
+          if (!existing) continue;
+          objectsMap.set(id, {
+            ...existing,
+            ...partial,
+            lastModifiedBy: userId,
+            lastModifiedAt: Date.now(),
+          });
+        }
+      });
+    },
+    [objectsMap, userId],
+  );
+
+  /**
+   * Delete multiple objects in a single Yjs transaction.
+   * Collapses N deletions into one WebSocket message.
+   */
+  const batchDeleteObjects = useCallback(
+    (ids: string[]): void => {
+      if (!objectsMap) return;
+      const doc = objectsMap.doc;
+      if (!doc) return;
+      log.debug('batchDeleteObjects', { count: ids.length });
+      doc.transact(() => {
+        for (const id of ids) {
+          objectsMap.delete(id);
+        }
+      });
+    },
+    [objectsMap],
+  );
+
+  /**
+   * Insert multiple pre-built objects in a single Yjs transaction.
+   * Each object must have a unique `id` already assigned.
+   * Respects {@link MAX_OBJECTS_PER_BOARD} — stops inserting if the cap is hit.
+   */
+  const batchCreateObjects = useCallback(
+    (objects: BoardObject[]): void => {
+      if (!objectsMap) return;
+      const doc = objectsMap.doc;
+      if (!doc) return;
+      log.debug('batchCreateObjects', { count: objects.length });
+      doc.transact(() => {
+        for (const obj of objects) {
+          if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) break;
+          objectsMap.set(obj.id, {
+            ...obj,
+            lastModifiedBy: userId,
+            lastModifiedAt: Date.now(),
+          });
+        }
+      });
+    },
+    [objectsMap, userId],
+  );
+
+  return {
+    createStickyNote,
+    createRectangle,
+    updateObject,
+    deleteObject,
+    getObject,
+    getAllObjects,
+    getObjectCount,
+    clearAll,
+    batchUpdateObjects,
+    batchDeleteObjects,
+    batchCreateObjects,
+  };
 }

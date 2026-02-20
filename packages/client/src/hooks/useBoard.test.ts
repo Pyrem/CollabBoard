@@ -87,6 +87,50 @@ function deleteObject(map: Y.Map<unknown>, id: string): void {
   map.delete(id);
 }
 
+function batchUpdateObjects(
+  map: Y.Map<unknown>,
+  updates: Array<{ id: string; updates: Partial<BoardObject> }>,
+): void {
+  const ydoc = map.doc;
+  if (!ydoc) return;
+  ydoc.transact(() => {
+    for (const { id, updates: partial } of updates) {
+      const existing = map.get(id) as BoardObject | undefined;
+      if (!existing) continue;
+      map.set(id, {
+        ...existing,
+        ...partial,
+        lastModifiedBy: userId,
+        lastModifiedAt: Date.now(),
+      });
+    }
+  });
+}
+
+function batchDeleteObjects(map: Y.Map<unknown>, ids: string[]): void {
+  const ydoc = map.doc;
+  if (!ydoc) return;
+  ydoc.transact(() => {
+    for (const id of ids) {
+      map.delete(id);
+    }
+  });
+}
+
+function batchCreateObjects(map: Y.Map<unknown>, objects: BoardObject[]): void {
+  const ydoc = map.doc;
+  if (!ydoc) return;
+  ydoc.transact(() => {
+    for (const obj of objects) {
+      map.set(obj.id, {
+        ...obj,
+        lastModifiedBy: userId,
+        lastModifiedAt: Date.now(),
+      });
+    }
+  });
+}
+
 describe('Board CRUD operations', () => {
   beforeEach(() => {
     doc = new Y.Doc();
@@ -282,6 +326,215 @@ describe('Board CRUD operations', () => {
       deleteObject(objectsMap, id);
       Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc));
       expect(map2.get(id)).toBeUndefined();
+
+      doc2.destroy();
+    });
+  });
+
+  describe('batchUpdateObjects', () => {
+    it('updates multiple objects in a single transaction', () => {
+      const id1 = createStickyNote(objectsMap, 0, 0, 'a');
+      const id2 = createStickyNote(objectsMap, 100, 100, 'b');
+      const id3 = createRectangle(objectsMap, 200, 200);
+
+      batchUpdateObjects(objectsMap, [
+        { id: id1, updates: { x: 50, y: 50 } },
+        { id: id2, updates: { x: 150, y: 150 } },
+        { id: id3, updates: { x: 250, y: 250 } },
+      ]);
+
+      const obj1 = objectsMap.get(id1) as StickyNote;
+      const obj2 = objectsMap.get(id2) as StickyNote;
+      const obj3 = objectsMap.get(id3) as RectangleShape;
+
+      expect(obj1.x).toBe(50);
+      expect(obj1.y).toBe(50);
+      expect(obj2.x).toBe(150);
+      expect(obj2.y).toBe(150);
+      expect(obj3.x).toBe(250);
+      expect(obj3.y).toBe(250);
+    });
+
+    it('fires only one Yjs update event for multiple updates', () => {
+      const id1 = createStickyNote(objectsMap, 0, 0);
+      const id2 = createStickyNote(objectsMap, 100, 100);
+      const id3 = createStickyNote(objectsMap, 200, 200);
+      const id4 = createStickyNote(objectsMap, 300, 300);
+      const id5 = createStickyNote(objectsMap, 400, 400);
+
+      let updateCount = 0;
+      doc.on('update', () => {
+        updateCount++;
+      });
+
+      batchUpdateObjects(objectsMap, [
+        { id: id1, updates: { x: 10 } },
+        { id: id2, updates: { x: 20 } },
+        { id: id3, updates: { x: 30 } },
+        { id: id4, updates: { x: 40 } },
+        { id: id5, updates: { x: 50 } },
+      ]);
+
+      expect(updateCount).toBe(1);
+    });
+
+    it('skips non-existent objects without failing', () => {
+      const id1 = createStickyNote(objectsMap, 0, 0);
+
+      batchUpdateObjects(objectsMap, [
+        { id: id1, updates: { x: 99 } },
+        { id: 'non-existent', updates: { x: 100 } },
+      ]);
+
+      expect((objectsMap.get(id1) as StickyNote).x).toBe(99);
+      expect(objectsMap.size).toBe(1);
+    });
+
+    it('stamps lastModifiedBy on all updated objects', () => {
+      const id1 = createStickyNote(objectsMap, 0, 0);
+      const id2 = createRectangle(objectsMap, 100, 100);
+
+      batchUpdateObjects(objectsMap, [
+        { id: id1, updates: { x: 10 } },
+        { id: id2, updates: { x: 20 } },
+      ]);
+
+      expect((objectsMap.get(id1) as StickyNote).lastModifiedBy).toBe(userId);
+      expect((objectsMap.get(id2) as RectangleShape).lastModifiedBy).toBe(userId);
+    });
+  });
+
+  describe('batchDeleteObjects', () => {
+    it('deletes multiple objects in a single transaction', () => {
+      const id1 = createStickyNote(objectsMap, 0, 0);
+      const id2 = createStickyNote(objectsMap, 100, 100);
+      const id3 = createRectangle(objectsMap, 200, 200);
+      expect(objectsMap.size).toBe(3);
+
+      batchDeleteObjects(objectsMap, [id1, id3]);
+
+      expect(objectsMap.size).toBe(1);
+      expect(objectsMap.get(id1)).toBeUndefined();
+      expect(objectsMap.get(id2)).toBeDefined();
+      expect(objectsMap.get(id3)).toBeUndefined();
+    });
+
+    it('fires only one Yjs update event for multiple deletes', () => {
+      const id1 = createStickyNote(objectsMap, 0, 0);
+      const id2 = createStickyNote(objectsMap, 100, 100);
+      const id3 = createStickyNote(objectsMap, 200, 200);
+
+      let updateCount = 0;
+      doc.on('update', () => {
+        updateCount++;
+      });
+
+      batchDeleteObjects(objectsMap, [id1, id2, id3]);
+
+      expect(updateCount).toBe(1);
+      expect(objectsMap.size).toBe(0);
+    });
+  });
+
+  describe('batchCreateObjects', () => {
+    it('creates multiple objects in a single transaction', () => {
+      const objects: BoardObject[] = [
+        {
+          id: 'batch-1',
+          type: 'sticky',
+          x: 0,
+          y: 0,
+          width: DEFAULT_STICKY_WIDTH,
+          height: DEFAULT_STICKY_HEIGHT,
+          rotation: 0,
+          zIndex: 0,
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+          text: 'first',
+          color: DEFAULT_STICKY_COLOR,
+        },
+        {
+          id: 'batch-2',
+          type: 'rectangle',
+          x: 100,
+          y: 100,
+          width: DEFAULT_RECT_WIDTH,
+          height: DEFAULT_RECT_HEIGHT,
+          rotation: 0,
+          zIndex: 1,
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+          fill: DEFAULT_FILL,
+          stroke: DEFAULT_STROKE,
+        },
+      ];
+
+      batchCreateObjects(objectsMap, objects);
+
+      expect(objectsMap.size).toBe(2);
+      expect((objectsMap.get('batch-1') as StickyNote).text).toBe('first');
+      expect((objectsMap.get('batch-2') as RectangleShape).x).toBe(100);
+    });
+
+    it('fires only one Yjs update event for multiple creates', () => {
+      let updateCount = 0;
+      doc.on('update', () => {
+        updateCount++;
+      });
+
+      const objects: BoardObject[] = [
+        {
+          id: 'bc-1',
+          type: 'sticky',
+          x: 0, y: 0,
+          width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT,
+          rotation: 0, zIndex: 0,
+          lastModifiedBy: userId, lastModifiedAt: Date.now(),
+          text: '', color: DEFAULT_STICKY_COLOR,
+        },
+        {
+          id: 'bc-2',
+          type: 'sticky',
+          x: 50, y: 50,
+          width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT,
+          rotation: 0, zIndex: 1,
+          lastModifiedBy: userId, lastModifiedAt: Date.now(),
+          text: '', color: DEFAULT_STICKY_COLOR,
+        },
+        {
+          id: 'bc-3',
+          type: 'sticky',
+          x: 100, y: 100,
+          width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT,
+          rotation: 0, zIndex: 2,
+          lastModifiedBy: userId, lastModifiedAt: Date.now(),
+          text: '', color: DEFAULT_STICKY_COLOR,
+        },
+      ];
+
+      batchCreateObjects(objectsMap, objects);
+
+      expect(updateCount).toBe(1);
+      expect(objectsMap.size).toBe(3);
+    });
+
+    it('syncs batch updates to a second Y.Doc in one update', () => {
+      const doc2 = new Y.Doc();
+      const map2 = doc2.getMap('objects');
+
+      const id1 = createStickyNote(objectsMap, 0, 0);
+      const id2 = createStickyNote(objectsMap, 100, 100);
+      Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc));
+
+      batchUpdateObjects(objectsMap, [
+        { id: id1, updates: { x: 500 } },
+        { id: id2, updates: { x: 600 } },
+      ]);
+
+      Y.applyUpdate(doc2, Y.encodeStateAsUpdate(doc));
+
+      expect((map2.get(id1) as StickyNote).x).toBe(500);
+      expect((map2.get(id2) as StickyNote).x).toBe(600);
 
       doc2.destroy();
     });
