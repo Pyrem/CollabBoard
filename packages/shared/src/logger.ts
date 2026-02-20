@@ -35,7 +35,7 @@ export interface Logger {
 declare const localStorage: { getItem(key: string): string | null } | undefined;
 declare const process: { env: Record<string, string | undefined> } | undefined;
 declare const console: {
-  debug(...args: unknown[]): void;
+  log(...args: unknown[]): void;
   info(...args: unknown[]): void;
   warn(...args: unknown[]): void;
   error(...args: unknown[]): void;
@@ -121,7 +121,7 @@ function createLogFn(
  */
 export function logger(namespace: string): Logger {
   return {
-    debug: createLogFn('debug', namespace, console.debug.bind(console)),
+    debug: createLogFn('debug', namespace, console.log.bind(console)),
     info: createLogFn('info', namespace, console.info.bind(console)),
     warn: createLogFn('warn', namespace, console.warn.bind(console)),
     error: createLogFn('error', namespace, console.error.bind(console)),
