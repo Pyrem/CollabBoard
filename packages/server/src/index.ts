@@ -64,4 +64,44 @@ httpServer.listen(PORT, () => {
   console.log(`[SERVER] HTTP + WebSocket running on port ${String(PORT)}`);
 });
 
+// ── Graceful shutdown ────────────────────────────────────────────────
+let shuttingDown = false;
+
+function shutdown(signal: string): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[SERVER] ${signal} received — shutting down`);
+
+  // 1. Stop accepting new connections
+  httpServer.close(() => {
+    console.log('[SERVER] HTTP server closed');
+  });
+  wss.close();
+
+  // 2. Flush Hocuspocus documents to SQLite and disconnect clients
+  hocuspocus
+    .destroy()
+    .then(() => {
+      console.log('[SERVER] Hocuspocus documents flushed');
+    })
+    .catch((err: unknown) => {
+      console.error('[SERVER] Hocuspocus destroy error', err);
+    })
+    .finally(() => {
+      // 3. Close SQLite connection
+      db.close();
+      console.log('[SERVER] Database closed');
+      process.exit(0);
+    });
+
+  // Hard exit if graceful shutdown takes too long
+  setTimeout(() => {
+    console.error('[SERVER] Forced exit after timeout');
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 export { hocuspocus, app };
