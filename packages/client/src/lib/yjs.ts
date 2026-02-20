@@ -14,7 +14,7 @@ function getHocuspocusUrl(): string {
     return `${protocol}//${window.location.host}`;
   }
 
-  return 'ws://localhost:1234';
+  return 'ws://localhost:3001';
 }
 
 const HOCUSPOCUS_URL = getHocuspocusUrl();
