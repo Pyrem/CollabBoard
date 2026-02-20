@@ -8,10 +8,15 @@
  * log.debug('skipped', { id, elapsed, threshold });
  * ```
  *
- * Activation:
- * - Browser: `localStorage.setItem('collabboard:debug', 'true')` (all namespaces)
- *            `localStorage.setItem('collabboard:debug', 'throttle,cursor')` (specific)
- * - Node:   `COLLABBOARD_DEBUG=true` or `COLLABBOARD_DEBUG=throttle,cursor`
+ * All levels (including debug) are ON by default.
+ *
+ * To suppress debug output:
+ * - Browser: `localStorage.setItem('collabboard:debug', 'false')`
+ * - Node:   `COLLABBOARD_DEBUG=false`
+ *
+ * To restrict debug to specific namespaces:
+ * - Browser: `localStorage.setItem('collabboard:debug', 'throttle,cursor')`
+ * - Node:   `COLLABBOARD_DEBUG=throttle,cursor`
  */
 
 /* eslint-disable @typescript-eslint/no-unnecessary-condition */
@@ -55,15 +60,6 @@ function getDebugConfig(): string {
   return '';
 }
 
-/** Check whether debug logging is enabled for a given namespace. */
-function isDebugEnabled(namespace: string): boolean {
-  const config = getDebugConfig();
-  if (!config) return false;
-  if (config === 'true' || config === '1' || config === '*') return true;
-  const namespaces = config.split(',').map((s) => s.trim());
-  return namespaces.includes(namespace);
-}
-
 const LEVEL_PRIORITY: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
@@ -71,15 +67,30 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 3,
 };
 
-/** Minimum level that is always on (info and above). Debug requires opt-in. */
-const DEFAULT_MIN_LEVEL: LogLevel = 'info';
+/**
+ * All levels including debug are ON by default.
+ *
+ * To suppress debug output, set `localStorage.setItem('collabboard:debug', 'false')`
+ * in the browser, or `COLLABBOARD_DEBUG=false` on the server.
+ * To restrict to specific namespaces, set e.g. `'throttle,cursor'`.
+ */
+function isDebugSuppressed(namespace: string): boolean {
+  const config = getDebugConfig();
+  if (!config) return false; // no config → everything on
+  if (config === 'false' || config === '0') return true; // explicitly off
+  if (config === 'true' || config === '1' || config === '*') return false; // explicitly on
+  // Namespace filter: only listed namespaces get debug output
+  const namespaces = config.split(',').map((s) => s.trim());
+  return !namespaces.includes(namespace);
+}
 
 function shouldLog(level: LogLevel, namespace: string): boolean {
-  if (LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[DEFAULT_MIN_LEVEL]) {
+  // info/warn/error are always on
+  if (LEVEL_PRIORITY[level] >= LEVEL_PRIORITY['info']) {
     return true;
   }
-  // debug level requires explicit opt-in
-  return isDebugEnabled(namespace);
+  // debug is on by default, but can be suppressed
+  return !isDebugSuppressed(namespace);
 }
 
 function formatPrefix(namespace: string): string {
