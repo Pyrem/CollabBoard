@@ -1,6 +1,6 @@
 import { Canvas as FabricCanvas, Group, ActiveSelection, util } from 'fabric';
 import type { MutableRefObject, RefObject } from 'react';
-import { getObjectSyncThrottle, logger } from '@collabboard/shared';
+import { getObjectSyncThrottle, getAdaptiveThrottleMs, logger } from '@collabboard/shared';
 import type { BoardObject } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
 import { getBoardId } from './fabricHelpers.js';
@@ -31,6 +31,39 @@ export function attachLocalModifications(
     if (isRemoteUpdateRef.current) return;
     const obj = opt.target;
     if (!obj) return;
+
+    // ActiveSelection: adaptive throttle, preview only the lead object
+    if (obj instanceof ActiveSelection) {
+      const children = obj.getObjects();
+      const lead = children[0];
+      if (!lead) return;
+      const leadId = getBoardId(lead);
+      if (!leadId) return;
+
+      const selectionSize = children.length;
+      const now = performance.now();
+      const lastSync = lastObjectSyncRef.current[leadId] ?? 0;
+      const threshold = getAdaptiveThrottleMs(userCountRef.current, selectionSize);
+      const elapsed = now - lastSync;
+      if (elapsed < threshold) {
+        log.debug('object:moving group skipped', { leadId, selectionSize, elapsed: Math.round(elapsed), threshold });
+        return;
+      }
+      lastObjectSyncRef.current[leadId] = now;
+
+      const worldMatrix = lead.calcTransformMatrix();
+      const decomposed = util.qrDecompose(worldMatrix);
+      log.debug('object:moving group synced', { leadId, selectionSize, x: decomposed.translateX, y: decomposed.translateY });
+      localUpdateIdsRef.current.add(leadId);
+      isLocalUpdateRef.current = true;
+      boardRef.current.updateObject(leadId, {
+        x: decomposed.translateX,
+        y: decomposed.translateY,
+      });
+      isLocalUpdateRef.current = false;
+      return;
+    }
+
     const id = getBoardId(obj);
     if (!id) return;
 
@@ -60,11 +93,15 @@ export function attachLocalModifications(
     if (!obj) return;
 
     // When an ActiveSelection is scaled, counteract the group scale on
-    // Group children (sticky notes) so they stay fixed-size visually.
+    // Group children (sticky notes) so they stay fixed-size visually,
+    // and preview-broadcast only the lead non-Group child with adaptive throttle.
     if (obj instanceof ActiveSelection) {
       const groupScaleX = obj.scaleX ?? 1;
       const groupScaleY = obj.scaleY ?? 1;
-      for (const child of obj.getObjects()) {
+      const children = obj.getObjects();
+
+      // Counteract scale on sticky notes
+      for (const child of children) {
         if (child instanceof Group) {
           child.set({
             scaleX: 1 / groupScaleX,
@@ -73,6 +110,39 @@ export function attachLocalModifications(
         }
       }
       canvas.requestRenderAll();
+
+      // Preview-broadcast the lead non-Group child's dimensions
+      const lead = children.find((c) => !(c instanceof Group));
+      if (!lead) return;
+      const leadId = getBoardId(lead);
+      if (!leadId) return;
+
+      const selectionSize = children.length;
+      const now = performance.now();
+      const lastSync = lastObjectSyncRef.current[leadId] ?? 0;
+      const threshold = getAdaptiveThrottleMs(userCountRef.current, selectionSize);
+      const elapsed = now - lastSync;
+      if (elapsed < threshold) {
+        log.debug('object:scaling group skipped', { leadId, selectionSize, elapsed: Math.round(elapsed), threshold });
+        return;
+      }
+      lastObjectSyncRef.current[leadId] = now;
+
+      const worldMatrix = lead.calcTransformMatrix();
+      const decomposed = util.qrDecompose(worldMatrix);
+      const actualWidth = (lead.width ?? 0) * decomposed.scaleX;
+      const actualHeight = (lead.height ?? 0) * decomposed.scaleY;
+
+      log.debug('object:scaling group synced', { leadId, selectionSize, width: Math.round(actualWidth), height: Math.round(actualHeight) });
+      localUpdateIdsRef.current.add(leadId);
+      isLocalUpdateRef.current = true;
+      boardRef.current.updateObject(leadId, {
+        x: decomposed.translateX,
+        y: decomposed.translateY,
+        width: actualWidth,
+        height: actualHeight,
+      });
+      isLocalUpdateRef.current = false;
       return;
     }
 
@@ -108,6 +178,38 @@ export function attachLocalModifications(
     if (isRemoteUpdateRef.current) return;
     const obj = opt.target;
     if (!obj) return;
+
+    // ActiveSelection: adaptive throttle, preview only the lead object's rotation
+    if (obj instanceof ActiveSelection) {
+      const children = obj.getObjects();
+      const lead = children[0];
+      if (!lead) return;
+      const leadId = getBoardId(lead);
+      if (!leadId) return;
+
+      const selectionSize = children.length;
+      const now = performance.now();
+      const lastSync = lastObjectSyncRef.current[leadId] ?? 0;
+      const threshold = getAdaptiveThrottleMs(userCountRef.current, selectionSize);
+      const elapsed = now - lastSync;
+      if (elapsed < threshold) {
+        log.debug('object:rotating group skipped', { leadId, selectionSize, elapsed: Math.round(elapsed), threshold });
+        return;
+      }
+      lastObjectSyncRef.current[leadId] = now;
+
+      const worldMatrix = lead.calcTransformMatrix();
+      const decomposed = util.qrDecompose(worldMatrix);
+      log.debug('object:rotating group synced', { leadId, selectionSize, angle: Math.round(decomposed.angle) });
+      localUpdateIdsRef.current.add(leadId);
+      isLocalUpdateRef.current = true;
+      boardRef.current.updateObject(leadId, {
+        rotation: decomposed.angle,
+      });
+      isLocalUpdateRef.current = false;
+      return;
+    }
+
     const id = getBoardId(obj);
     if (!id) return;
 
