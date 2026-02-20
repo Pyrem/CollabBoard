@@ -96,6 +96,8 @@ export function useObjectSync(
             }
             break;
           }
+          // Note: sticky notes intentionally skip rotation — they use
+          // lockRotation: true and have no angle read/write.
           // Future object types go here:
           // case 'circle': { ... break; }
           // case 'line': { ... break; }

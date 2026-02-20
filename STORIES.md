@@ -290,12 +290,12 @@ built-in rotation control handle.
 
 ### Acceptance criteria
 
-- [ ] Rectangles show a rotation handle and can be rotated by dragging it
-- [ ] Rotation value persists to Yjs and syncs across users
-- [ ] Rotated objects render at the correct angle on initial load
+- [x] Rectangles show a rotation handle and can be rotated by dragging it
+- [x] Rotation value persists to Yjs and syncs across users
+- [x] Rotated objects render at the correct angle on initial load
 - [ ] Text elements and frames (once implemented) also support rotation
-- [ ] Sticky notes remain non-rotatable (locked)
-- [ ] No regressions to move/resize behavior
+- [x] Sticky notes remain non-rotatable (locked)
+- [x] No regressions to move/resize behavior
 
 ### Files affected
 

@@ -105,8 +105,12 @@ export function createStickyGroup(stickyData: StickyNote): Group {
 /**
  * Create a Fabric `Rect` from a validated {@link RectangleShape}.
  *
- * Rotation is disabled (Story 6 will unlock it). The board ID is set
- * automatically via {@link setBoardId} — no caller action needed.
+ * Rotation is enabled — the user can drag the `mtr` (middle-top-rotate)
+ * control to rotate. The `angle` property is set from `rectData.rotation`
+ * so that objects created by remote users render at the correct orientation.
+ *
+ * The board ID is set automatically via {@link setBoardId} — no caller
+ * action needed.
  *
  * @param rectData - Validated rectangle from the Yjs map.
  * @returns A positioned `Rect` ready to be added to the canvas.
@@ -117,22 +121,22 @@ export function createRectFromData(rectData: RectangleShape): Rect {
     top: rectData.y,
     width: rectData.width,
     height: rectData.height,
+    angle: rectData.rotation,
     strokeWidth: 2,
-    lockRotation: true,
   });
   rect.set('fill', rectData.fill || DEFAULT_FILL);
   rect.set('stroke', rectData.stroke || DEFAULT_STROKE);
   rect.dirty = true;
-  rect.setControlVisible('mtr', false);
   setBoardId(rect, rectData.id);
   return rect;
 }
 
 /**
- * Apply position/size/style changes to an existing Fabric `Rect` in-place.
+ * Apply position/size/style/rotation changes to an existing Fabric `Rect` in-place.
  *
  * Resets `scaleX`/`scaleY` to 1 and writes actual dimensions so Fabric's
- * coordinate cache stays consistent after remote updates.
+ * coordinate cache stays consistent after remote updates. Sets `angle` from
+ * the Yjs `rotation` field so remote rotations are reflected immediately.
  */
 export function updateRectFromData(existing: Rect, rectData: RectangleShape): void {
   existing.set({
@@ -140,6 +144,7 @@ export function updateRectFromData(existing: Rect, rectData: RectangleShape): vo
     top: rectData.y,
     width: rectData.width,
     height: rectData.height,
+    angle: rectData.rotation,
     scaleX: 1,
     scaleY: 1,
   });

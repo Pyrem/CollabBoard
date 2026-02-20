@@ -5,9 +5,14 @@ import type { useBoard } from '../../../hooks/useBoard.js';
 import { getBoardId } from './fabricHelpers.js';
 
 /**
- * Attach object:moving, object:scaling, and object:modified listeners
- * that sync local Fabric changes back to Yjs.
- * Returns a cleanup function.
+ * Attach object:moving, object:scaling, object:rotating, and object:modified
+ * listeners that sync local Fabric changes back to Yjs.
+ *
+ * `object:rotating` broadcasts the angle during the drag so remote users see
+ * a live preview. `object:modified` fires once on mouse-up and writes the
+ * final position, size, and rotation (normalising scale back to 1).
+ *
+ * @returns A cleanup function that removes all listeners.
  */
 export function attachLocalModifications(
   canvas: FabricCanvas,
@@ -66,6 +71,26 @@ export function attachLocalModifications(
     isLocalUpdateRef.current = false;
   });
 
+  const disposeRotating = canvas.on('object:rotating', (opt) => {
+    if (isRemoteUpdateRef.current) return;
+    const obj = opt.target;
+    if (!obj) return;
+    const id = getBoardId(obj);
+    if (!id) return;
+
+    const now = Date.now();
+    const lastSync = lastObjectSyncRef.current[id] ?? 0;
+    if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
+    lastObjectSyncRef.current[id] = now;
+
+    localUpdateIdsRef.current.add(id);
+    isLocalUpdateRef.current = true;
+    boardRef.current.updateObject(id, {
+      rotation: obj.angle ?? 0,
+    });
+    isLocalUpdateRef.current = false;
+  });
+
   const disposeModified = canvas.on('object:modified', (opt) => {
     if (isRemoteUpdateRef.current) return;
     const obj = opt.target;
@@ -79,6 +104,7 @@ export function attachLocalModifications(
     isLocalUpdateRef.current = true;
 
     if (obj instanceof Group) {
+      // Sticky notes: position only (rotation stays locked on Groups)
       boardRef.current.updateObject(id, {
         x: obj.left ?? 0,
         y: obj.top ?? 0,
@@ -92,6 +118,7 @@ export function attachLocalModifications(
         y: obj.top ?? 0,
         width: actualWidth,
         height: actualHeight,
+        rotation: obj.angle ?? 0,
       });
 
       obj.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
@@ -105,6 +132,7 @@ export function attachLocalModifications(
   return () => {
     disposeMoving();
     disposeScaling();
+    disposeRotating();
     disposeModified();
   };
 }
