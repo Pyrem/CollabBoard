@@ -56,15 +56,20 @@ export function useCursors(
 
     const handleChange = (): void => {
       const states = awareness.getStates();
-      const cursors: UserPresence[] = [];
+      // Deduplicate by userId — a user with multiple tabs produces
+      // multiple awareness clientIds but should only show one cursor.
+      // Prefer the entry that has a cursor position.
+      const byUserId = new Map<string, UserPresence>();
       states.forEach((state, clientId) => {
         if (clientId === awareness.clientID) return;
         const user = state['user'] as UserPresence | undefined;
-        if (user) {
-          cursors.push(user);
+        if (!user) return;
+        const existing = byUserId.get(user.userId);
+        if (!existing || (user.cursor && !existing.cursor)) {
+          byUserId.set(user.userId, user);
         }
       });
-      setRemoteCursors(cursors);
+      setRemoteCursors(Array.from(byUserId.values()));
     };
 
     awareness.on('change', handleChange);
