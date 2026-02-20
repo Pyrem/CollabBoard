@@ -1,6 +1,7 @@
 import { use, useCallback, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../hooks/useAuth.js';
+import { logOut } from '../../lib/firebase.js';
 import { useYjs } from '../../hooks/useYjs.js';
 import { useBoard } from '../../hooks/useBoard.js';
 import { useCursors } from '../../hooks/useCursors.js';
@@ -13,7 +14,13 @@ import { PresencePanel } from '../Presence/PresencePanel.js';
 export function BoardPage(): React.JSX.Element {
   const { boardId = 'default' } = useParams<{ boardId: string }>();
   const { user } = use(AuthContext);
+  const navigate = useNavigate();
   const yjs = useYjs(boardId);
+
+  const handleLogout = useCallback(async () => {
+    await logOut();
+    void navigate('/', { replace: true });
+  }, [navigate]);
 
   const userId = user?.uid ?? 'anonymous';
   const displayName = user?.displayName ?? 'Anonymous';
@@ -66,6 +73,9 @@ export function BoardPage(): React.JSX.Element {
       <CursorOverlay cursors={remoteCursors} viewport={viewport} />
       <Toolbar board={board} selectedObject={selectedObject} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
       <PresencePanel users={onlineUsers} />
+      <button onClick={() => void handleLogout()} style={styles.logoutBtn}>
+        Log out
+      </button>
       {!yjs.connected && (
         <div style={styles.connectionBanner}>Reconnecting...</div>
       )}
@@ -74,6 +84,20 @@ export function BoardPage(): React.JSX.Element {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  logoutBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    padding: '6px 14px',
+    fontSize: 13,
+    fontWeight: 600,
+    border: '1px solid #ddd',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    color: '#333',
+    cursor: 'pointer',
+    zIndex: 100,
+  },
   connectionBanner: {
     position: 'absolute',
     top: 0,
