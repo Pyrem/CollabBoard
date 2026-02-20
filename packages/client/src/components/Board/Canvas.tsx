@@ -11,7 +11,7 @@ import {
 import type * as Y from 'yjs';
 import type { BoardObject, StickyNote, RectangleShape } from '@collabboard/shared';
 import type { CursorPosition } from '@collabboard/shared';
-import { DEFAULT_FILL, DEFAULT_STROKE, getObjectSyncThrottle } from '@collabboard/shared';
+import { DEFAULT_FILL, DEFAULT_STROKE, getObjectSyncThrottle, validateBoardObject } from '@collabboard/shared';
 import type { useBoard } from '../../hooks/useBoard.js';
 
 export interface SelectedObject {
@@ -514,20 +514,30 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       isRemoteUpdateRef.current = false;
     };
 
-    // Initial load — sort by zIndex so objects layer correctly
+    // Initial load — validate and sort by zIndex so objects layer correctly
     const objects: Array<[string, BoardObject]> = [];
     objectsMap.forEach((value, key) => {
-      objects.push([key, value as BoardObject]);
+      const validated = validateBoardObject(value);
+      if (validated) {
+        objects.push([key, validated]);
+      } else {
+        console.warn(`[Canvas] Ignoring malformed object "${key}"`, value);
+      }
     });
     objects.sort((a, b) => a[1].zIndex - b[1].zIndex);
     objects.forEach(([key, data]) => syncObjectToCanvas(key, data));
 
-    // Observe Yjs map changes
+    // Observe Yjs map changes — validate before applying
     const observer = (events: Y.YMapEvent<unknown>): void => {
       events.changes.keys.forEach((change, key) => {
         if (change.action === 'add' || change.action === 'update') {
-          const data = objectsMap.get(key) as BoardObject | undefined;
-          if (data) syncObjectToCanvas(key, data);
+          const raw = objectsMap.get(key);
+          const data = validateBoardObject(raw);
+          if (data) {
+            syncObjectToCanvas(key, data);
+          } else {
+            console.warn(`[Canvas] Ignoring malformed object "${key}"`, raw);
+          }
         } else if (change.action === 'delete') {
           removeObjectFromCanvas(key);
         }
