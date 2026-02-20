@@ -29,6 +29,16 @@ export const DEFAULT_STROKE_WIDTH = 2;
 // Cursor
 export const CURSOR_THROTTLE_MS = 30;
 
+// Object sync throttle (base rate for intermediate updates during drag/resize)
+export const OBJECT_SYNC_THROTTLE_MS = 50;
+
+// Adaptive throttle: scales with connected user count to reduce network load
+export function getObjectSyncThrottle(userCount: number): number {
+  if (userCount <= 5) return 50;
+  if (userCount <= 10) return 100;
+  return 200;
+}
+
 // Presence colors assigned to users
 export const PRESENCE_COLORS = [
   '#FF6B6B',
