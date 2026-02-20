@@ -24,14 +24,16 @@ export function usePresence(provider: HocuspocusProvider | null): UserPresence[]
 
     const handleChange = (): void => {
       const states = awareness.getStates();
-      const onlineUsers: UserPresence[] = [];
+      // Deduplicate by userId — a user with multiple tabs produces
+      // multiple awareness entries but should only appear once.
+      const byUserId = new Map<string, UserPresence>();
       states.forEach((state) => {
         const user = state['user'] as UserPresence | undefined;
         if (user) {
-          onlineUsers.push(user);
+          byUserId.set(user.userId, user);
         }
       });
-      setUsers(onlineUsers);
+      setUsers(Array.from(byUserId.values()));
     };
 
     awareness.on('change', handleChange);
