@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { useBoard } from '../../hooks/useBoard.js';
 import type { SelectedObject } from '../Board/Canvas.js';
 import type { BoardObject } from '@collabboard/shared';
-import { STICKY_COLORS, MAX_OBJECTS_PER_BOARD } from '@collabboard/shared';
+import { STICKY_COLORS, MAX_OBJECTS_PER_BOARD, THROTTLE } from '@collabboard/shared';
 
 interface ToolbarProps {
   board: ReturnType<typeof useBoard>;
@@ -15,6 +15,7 @@ type Tool = 'select' | 'sticky' | 'rectangle';
 export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps): React.JSX.Element {
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [selectedColor, setSelectedColor] = useState<string>(STICKY_COLORS[0]);
+  const lastColorChangeRef = useRef(0);
 
   const objectCount = board.getObjectCount();
   const atLimit = objectCount >= MAX_OBJECTS_PER_BOARD;
@@ -47,8 +48,12 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
 
   const handleColorClick = (color: string): void => {
     setSelectedColor(color);
-    // If an object is selected, update its color in-place
+    // If an object is selected, update its color in-place (throttled)
     if (selectedObject) {
+      const now = performance.now();
+      if (now - lastColorChangeRef.current < THROTTLE.COLOR_CHANGE_MS) return;
+      lastColorChangeRef.current = now;
+
       if (selectedObject.type === 'sticky') {
         board.updateObject(selectedObject.id, { color } as Partial<BoardObject>);
       } else if (selectedObject.type === 'rectangle') {
