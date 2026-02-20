@@ -1,6 +1,7 @@
-import { Canvas as FabricCanvas, Group } from 'fabric';
+import { Canvas as FabricCanvas, Group, ActiveSelection, util } from 'fabric';
 import type { MutableRefObject, RefObject } from 'react';
 import { getObjectSyncThrottle, logger } from '@collabboard/shared';
+import type { BoardObject } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
 import { getBoardId } from './fabricHelpers.js';
 
@@ -115,6 +116,69 @@ export function attachLocalModifications(
     if (isRemoteUpdateRef.current) return;
     const obj = opt.target;
     if (!obj) return;
+
+    if (obj instanceof ActiveSelection) {
+      // Multi-object modification: decompose each child's world transform
+      const children = obj.getObjects();
+      const updates: Array<{ id: string; updates: Partial<BoardObject> }> = [];
+
+      for (const child of children) {
+        const childId = getBoardId(child);
+        if (!childId) continue;
+
+        // calcTransformMatrix() returns the child's full world matrix
+        // (including the ActiveSelection group transform)
+        const worldMatrix = child.calcTransformMatrix();
+        const decomposed = util.qrDecompose(worldMatrix);
+
+        delete lastObjectSyncRef.current[childId];
+        localUpdateIdsRef.current.add(childId);
+
+        if (child instanceof Group) {
+          // Sticky notes: position + rotation only (fixed-size)
+          updates.push({
+            id: childId,
+            updates: {
+              x: decomposed.translateX,
+              y: decomposed.translateY,
+              rotation: decomposed.angle,
+            },
+          });
+        } else {
+          const actualWidth = (child.width ?? 0) * decomposed.scaleX;
+          const actualHeight = (child.height ?? 0) * decomposed.scaleY;
+          updates.push({
+            id: childId,
+            updates: {
+              x: decomposed.translateX,
+              y: decomposed.translateY,
+              width: actualWidth,
+              height: actualHeight,
+              rotation: decomposed.angle,
+            },
+          });
+
+          // Normalise scale on the Fabric object
+          child.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
+          child.setCoords();
+        }
+      }
+
+      if (updates.length > 0) {
+        isLocalUpdateRef.current = true;
+        log.debug('object:modified ActiveSelection', {
+          count: updates.length,
+          children: updates.map((u) => ({ id: u.id, ...u.updates })),
+        });
+        boardRef.current.batchUpdateObjects(updates);
+        isLocalUpdateRef.current = false;
+      }
+
+      canvas.renderAll();
+      return;
+    }
+
+    // Single-object modification
     const id = getBoardId(obj);
     if (!id) return;
 
