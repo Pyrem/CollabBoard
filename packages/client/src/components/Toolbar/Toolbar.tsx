@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { useBoard } from '../../hooks/useBoard.js';
 import type { SelectedObject } from '../Board/Canvas.js';
 import type { BoardObject } from '@collabboard/shared';
-import { STICKY_COLORS } from '@collabboard/shared';
+import { STICKY_COLORS, MAX_OBJECTS_PER_BOARD } from '@collabboard/shared';
 
 interface ToolbarProps {
   board: ReturnType<typeof useBoard>;
@@ -16,23 +16,31 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
   const [activeTool, setActiveTool] = useState<Tool>('select');
   const [selectedColor, setSelectedColor] = useState<string>(STICKY_COLORS[0]);
 
+  const objectCount = board.getObjectCount();
+  const atLimit = objectCount >= MAX_OBJECTS_PER_BOARD;
+
   const handleToolClick = (tool: Tool): void => {
     const center = getSceneCenter();
+    let result: string | null = null;
     if (tool === 'sticky') {
-      board.createStickyNote(
+      result = board.createStickyNote(
         center.x - 100,
         center.y - 100,
         '',
         selectedColor,
       );
     } else if (tool === 'rectangle') {
-      board.createRectangle(
+      result = board.createRectangle(
         center.x - 75,
         center.y - 50,
         undefined,
         undefined,
         selectedColor,
       );
+    }
+    if (result === null && tool !== 'select') {
+      window.alert(`Object limit reached (${String(MAX_OBJECTS_PER_BOARD)}). Delete some objects before creating new ones.`);
+      return;
     }
     setActiveTool(tool);
   };
@@ -110,6 +118,18 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
           title={color}
         />
       ))}
+
+      <div style={styles.separator} />
+
+      <span
+        style={{
+          ...styles.objectCount,
+          ...(atLimit ? styles.objectCountAtLimit : {}),
+        }}
+        title={`${String(objectCount)} / ${String(MAX_OBJECTS_PER_BOARD)} objects`}
+      >
+        {String(objectCount)}/{String(MAX_OBJECTS_PER_BOARD)}
+      </span>
     </div>
   );
 }
@@ -166,5 +186,15 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(0,0,0,0.15)',
     cursor: 'pointer',
     padding: 0,
+  },
+  objectCount: {
+    fontSize: 11,
+    color: '#888',
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  objectCountAtLimit: {
+    color: '#c62828',
+    fontWeight: 700,
   },
 };

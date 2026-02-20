@@ -6,6 +6,7 @@ import { Server } from '@hocuspocus/server';
 import { Database } from '@hocuspocus/extension-database';
 import { WebSocketServer } from 'ws';
 import { onAuthenticate } from './hocuspocus/onAuthenticate.js';
+import { onChange } from './hocuspocus/onChange.js';
 import { loadDocument, storeDocument, setupDatabase } from './hocuspocus/database.js';
 import { aiCommandHandler } from './ai/handler.js';
 import { authMiddleware } from './middleware/auth.js';
@@ -20,6 +21,7 @@ const db = setupDatabase();
 // Hocuspocus server (no standalone listen — we handle upgrades manually)
 const hocuspocus = Server.configure({
   onAuthenticate,
+  onChange,
   extensions: [
     new Database({
       fetch: async ({ documentName }) => loadDocument(db, documentName),

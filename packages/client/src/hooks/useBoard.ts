@@ -14,15 +14,17 @@ import {
   DEFAULT_RECT_HEIGHT,
   DEFAULT_FILL,
   DEFAULT_STROKE,
+  MAX_OBJECTS_PER_BOARD,
 } from '@collabboard/shared';
 
 interface UseBoardReturn {
-  createStickyNote: (x: number, y: number, text?: string, color?: string) => string;
-  createRectangle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string;
+  createStickyNote: (x: number, y: number, text?: string, color?: string) => string | null;
+  createRectangle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string | null;
   updateObject: (id: string, updates: Partial<BoardObject>) => void;
   deleteObject: (id: string) => void;
   getObject: (id: string) => BoardObject | undefined;
   getAllObjects: () => BoardObject[];
+  getObjectCount: () => number;
   clearAll: () => void;
 }
 
@@ -31,8 +33,9 @@ export function useBoard(
   userId: string,
 ): UseBoardReturn {
   const createStickyNote = useCallback(
-    (x: number, y: number, text = '', color = DEFAULT_STICKY_COLOR): string => {
-      if (!objectsMap) return '';
+    (x: number, y: number, text = '', color = DEFAULT_STICKY_COLOR): string | null => {
+      if (!objectsMap) return null;
+      if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
       const id = uuidv4();
       const note: StickyNote = {
         id,
@@ -55,8 +58,9 @@ export function useBoard(
   );
 
   const createRectangle = useCallback(
-    (x: number, y: number, width = DEFAULT_RECT_WIDTH, height = DEFAULT_RECT_HEIGHT, fill = DEFAULT_FILL, stroke = DEFAULT_STROKE): string => {
-      if (!objectsMap) return '';
+    (x: number, y: number, width = DEFAULT_RECT_WIDTH, height = DEFAULT_RECT_HEIGHT, fill = DEFAULT_FILL, stroke = DEFAULT_STROKE): string | null => {
+      if (!objectsMap) return null;
+      if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
       const id = uuidv4();
       const rect: RectangleShape = {
         id,
@@ -118,6 +122,11 @@ export function useBoard(
     return objects;
   }, [objectsMap]);
 
+  const getObjectCount = useCallback((): number => {
+    if (!objectsMap) return 0;
+    return objectsMap.size;
+  }, [objectsMap]);
+
   const clearAll = useCallback((): void => {
     if (!objectsMap) return;
     const keys = Array.from(objectsMap.keys());
@@ -128,5 +137,5 @@ export function useBoard(
     });
   }, [objectsMap]);
 
-  return { createStickyNote, createRectangle, updateObject, deleteObject, getObject, getAllObjects, clearAll };
+  return { createStickyNote, createRectangle, updateObject, deleteObject, getObject, getAllObjects, getObjectCount, clearAll };
 }
