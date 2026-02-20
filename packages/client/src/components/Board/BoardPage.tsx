@@ -5,7 +5,7 @@ import { useYjs } from '../../hooks/useYjs.js';
 import { useBoard } from '../../hooks/useBoard.js';
 import { useCursors } from '../../hooks/useCursors.js';
 import { usePresence } from '../../hooks/usePresence.js';
-import { Canvas, type SelectedObject, type SceneCenter } from './Canvas.js';
+import { Canvas, type SelectedObject, type SceneCenter, type ViewportState } from './Canvas.js';
 import { Toolbar } from '../Toolbar/Toolbar.js';
 import { CursorOverlay } from '../Cursors/CursorOverlay.js';
 import { PresencePanel } from '../Presence/PresencePanel.js';
@@ -29,6 +29,7 @@ export function BoardPage(): React.JSX.Element {
   const onlineUsers = usePresence(yjs?.provider ?? null);
 
   const [selectedObject, setSelectedObject] = useState<SelectedObject | null>(null);
+  const [viewport, setViewport] = useState<ViewportState>({ zoom: 1, panX: 0, panY: 0 });
   const getSceneCenterRef = useRef<(() => SceneCenter) | null>(null);
 
   const handleSelectionChange = useCallback((selected: SelectedObject | null) => {
@@ -37,6 +38,10 @@ export function BoardPage(): React.JSX.Element {
 
   const handleCanvasReady = useCallback((getSceneCenter: () => SceneCenter) => {
     getSceneCenterRef.current = getSceneCenter;
+  }, []);
+
+  const handleViewportChange = useCallback((vp: ViewportState) => {
+    setViewport(vp);
   }, []);
 
   if (!yjs) {
@@ -56,8 +61,9 @@ export function BoardPage(): React.JSX.Element {
         onCursorMove={updateLocalCursor}
         onSelectionChange={handleSelectionChange}
         onReady={handleCanvasReady}
+        onViewportChange={handleViewportChange}
       />
-      <CursorOverlay cursors={remoteCursors} />
+      <CursorOverlay cursors={remoteCursors} viewport={viewport} />
       <Toolbar board={board} selectedObject={selectedObject} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
       <PresencePanel users={onlineUsers} />
       {!yjs.connected && (

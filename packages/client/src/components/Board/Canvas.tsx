@@ -24,6 +24,12 @@ export interface SceneCenter {
   y: number;
 }
 
+export interface ViewportState {
+  zoom: number;
+  panX: number;
+  panY: number;
+}
+
 interface CanvasProps {
   objectsMap: Y.Map<unknown>;
   board: ReturnType<typeof useBoard>;
@@ -31,6 +37,7 @@ interface CanvasProps {
   onCursorMove: (position: CursorPosition) => void;
   onSelectionChange: (selected: SelectedObject | null) => void;
   onReady: (getSceneCenter: () => SceneCenter) => void;
+  onViewportChange: (viewport: ViewportState) => void;
 }
 
 interface EditingState {
@@ -115,7 +122,7 @@ function createStickyGroup(stickyData: StickyNote): Group {
   return group;
 }
 
-export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelectionChange, onReady }: CanvasProps): React.JSX.Element {
+export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
@@ -139,6 +146,8 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
   onSelectionChangeRef.current = onSelectionChange;
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const onViewportChangeRef = useRef(onViewportChange);
+  onViewportChangeRef.current = onViewportChange;
 
   // Initialize Fabric.js canvas — runs once on mount
   useEffect(() => {
@@ -165,6 +174,13 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
         y: (centerScreenY - vpt[5]) / zoom,
       };
     });
+
+    // Helper: emit current viewport transform to parent
+    const emitViewport = (): void => {
+      const vpt = canvas.viewportTransform;
+      if (!vpt) return;
+      onViewportChangeRef.current({ zoom: canvas.getZoom(), panX: vpt[4], panY: vpt[5] });
+    };
 
     // Pan/zoom setup
     let isPanning = false;
@@ -194,6 +210,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
           vpt[4] += dx;
           vpt[5] += dy;
           canvas.setViewportTransform(vpt);
+          emitViewport();
         }
         lastPosX = evt.clientX;
         lastPosY = evt.clientY;
@@ -212,6 +229,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       zoom *= 0.999 ** delta;
       zoom = Math.min(Math.max(zoom, 0.1), 5);
       canvas.zoomToPoint(canvas.getScenePoint(opt.e), zoom);
+      emitViewport();
       opt.e.preventDefault();
       opt.e.stopPropagation();
     });
