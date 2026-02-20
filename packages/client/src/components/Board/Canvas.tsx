@@ -11,7 +11,7 @@ import {
 import type * as Y from 'yjs';
 import type { BoardObject, StickyNote, RectangleShape } from '@collabboard/shared';
 import type { CursorPosition } from '@collabboard/shared';
-import { DEFAULT_FILL, DEFAULT_STROKE } from '@collabboard/shared';
+import { DEFAULT_FILL, DEFAULT_STROKE, getObjectSyncThrottle } from '@collabboard/shared';
 import type { useBoard } from '../../hooks/useBoard.js';
 
 export interface SelectedObject {
@@ -27,6 +27,7 @@ export interface SceneCenter {
 interface CanvasProps {
   objectsMap: Y.Map<unknown>;
   board: ReturnType<typeof useBoard>;
+  userCount: number;
   onCursorMove: (position: CursorPosition) => void;
   onSelectionChange: (selected: SelectedObject | null) => void;
   onReady: (getSceneCenter: () => SceneCenter) => void;
@@ -50,6 +51,21 @@ function getBoardId(obj: FabricObject): string | undefined {
 // Helper: set boardId on a Fabric object
 function setBoardId(obj: FabricObject, id: string): void {
   (obj as unknown as { boardId: string }).boardId = id;
+}
+
+// Helpers: track sticky note content on the Fabric Group to detect position-only updates
+function setStickyContent(obj: FabricObject, text: string, color: string): void {
+  const record = obj as unknown as { _stickyText: string; _stickyColor: string };
+  record._stickyText = text;
+  record._stickyColor = color;
+}
+
+function getStickyContent(obj: FabricObject): { text: string; color: string } | undefined {
+  const record = obj as unknown as { _stickyText?: string; _stickyColor?: string };
+  if (record._stickyText !== undefined && record._stickyColor !== undefined) {
+    return { text: record._stickyText, color: record._stickyColor };
+  }
+  return undefined;
 }
 
 // Helper: create a sticky note Group from data
@@ -99,11 +115,12 @@ function createStickyGroup(stickyData: StickyNote): Group {
   return group;
 }
 
-export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange, onReady }: CanvasProps): React.JSX.Element {
+export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelectionChange, onReady }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
   const isLocalUpdateRef = useRef(false);
+  const lastObjectSyncRef = useRef<Record<string, number>>({});
 
   // State for sticky note inline text editing
   const [editingSticky, setEditingSticky] = useState<EditingState | null>(null);
@@ -114,6 +131,8 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange, onR
   // without causing effect re-runs
   const boardRef = useRef(board);
   boardRef.current = board;
+  const userCountRef = useRef(userCount);
+  userCountRef.current = userCount;
   const onCursorMoveRef = useRef(onCursorMove);
   onCursorMoveRef.current = onCursorMove;
   const onSelectionChangeRef = useRef(onSelectionChange);
@@ -251,13 +270,63 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange, onR
       });
     });
 
-    // Handle local object modifications -> sync to Yjs
+    // Broadcast intermediate position updates during drag (throttled)
+    canvas.on('object:moving', (opt) => {
+      if (isRemoteUpdateRef.current) return;
+      const obj = opt.target;
+      if (!obj) return;
+      const id = getBoardId(obj);
+      if (!id) return;
+
+      const now = Date.now();
+      const lastSync = lastObjectSyncRef.current[id] ?? 0;
+      if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
+      lastObjectSyncRef.current[id] = now;
+
+      isLocalUpdateRef.current = true;
+      boardRef.current.updateObject(id, {
+        x: obj.left ?? 0,
+        y: obj.top ?? 0,
+      });
+      isLocalUpdateRef.current = false;
+    });
+
+    // Broadcast intermediate size updates during resize (throttled)
+    canvas.on('object:scaling', (opt) => {
+      if (isRemoteUpdateRef.current) return;
+      const obj = opt.target;
+      if (!obj) return;
+      const id = getBoardId(obj);
+      if (!id) return;
+
+      const now = Date.now();
+      const lastSync = lastObjectSyncRef.current[id] ?? 0;
+      if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
+      lastObjectSyncRef.current[id] = now;
+
+      const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
+      const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
+
+      isLocalUpdateRef.current = true;
+      boardRef.current.updateObject(id, {
+        x: obj.left ?? 0,
+        y: obj.top ?? 0,
+        width: actualWidth,
+        height: actualHeight,
+      });
+      isLocalUpdateRef.current = false;
+    });
+
+    // Handle local object modifications -> sync to Yjs (final authoritative update on mouse release)
     canvas.on('object:modified', (opt) => {
       if (isRemoteUpdateRef.current) return;
       const obj = opt.target;
       if (!obj) return;
       const id = getBoardId(obj);
       if (!id) return;
+
+      // Reset throttle so the final update always fires immediately
+      delete lastObjectSyncRef.current[id];
 
       // Guard: prevent the Yjs observer from re-syncing this object
       // back to the canvas while we're processing a local edit
@@ -321,17 +390,26 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange, onR
 
       if (existing) {
         if (data.type === 'sticky') {
-          // Recreate sticky note Group entirely on every update.
-          // This avoids all Fabric.js Group layout manager issues —
-          // sub-objects are always positioned correctly by a fresh layout pass.
-          const wasActive = canvas.getActiveObject() === existing;
-          canvas.remove(existing);
-          const group = createStickyGroup(data as StickyNote);
-          setBoardId(group, id);
-          canvas.add(group);
-          group.setCoords();
-          if (wasActive) {
-            canvas.setActiveObject(group);
+          const stickyData = data as StickyNote;
+          const prev = getStickyContent(existing);
+
+          if (prev && prev.text === stickyData.text && prev.color === stickyData.color) {
+            // Position-only update — lightweight move, no Group recreation
+            existing.set({ left: stickyData.x, top: stickyData.y });
+            existing.setCoords();
+          } else {
+            // Content changed (text or color) — full recreation needed
+            // to work around Fabric.js Group layout manager issues
+            const wasActive = canvas.getActiveObject() === existing;
+            canvas.remove(existing);
+            const group = createStickyGroup(stickyData);
+            setBoardId(group, id);
+            setStickyContent(group, stickyData.text, stickyData.color);
+            canvas.add(group);
+            group.setCoords();
+            if (wasActive) {
+              canvas.setActiveObject(group);
+            }
           }
         } else if (data.type === 'rectangle' && existing instanceof Rect) {
           const rectData = data as RectangleShape;
@@ -351,8 +429,10 @@ export function Canvas({ objectsMap, board, onCursorMove, onSelectionChange, onR
       } else {
         // Create new object on canvas
         if (data.type === 'sticky') {
-          const group = createStickyGroup(data as StickyNote);
+          const stickyData = data as StickyNote;
+          const group = createStickyGroup(stickyData);
           setBoardId(group, id);
+          setStickyContent(group, stickyData.text, stickyData.color);
           canvas.add(group);
           group.setCoords();
         } else if (data.type === 'rectangle') {

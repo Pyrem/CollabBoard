@@ -26,15 +26,13 @@
 
 ## Sprint: Post-MVP Polish & Real-Time Quality
 
-### In Progress
+### Completed
 
-*None*
+| ID | Story | Points | Notes |
+|----|-------|--------|-------|
+| RT-001 | Live object manipulation broadcast — sync move/resize/rotate to other users in real-time, not just on mouse release | 5 | Throttled object:moving/scaling handlers broadcast intermediate positions. Adaptive throttle: 50ms/100ms/200ms based on user count. Position-only sticky updates use lightweight move instead of Group recreation. object:modified still sends final authoritative state. |
 
 ### Ready (Pull Next)
-
-| ID | Story | Points | Priority | Acceptance Criteria |
-|----|-------|--------|----------|-------------------|
-| RT-001 | Live object manipulation broadcast — sync move/resize/rotate to other users in real-time, not just on mouse release | 5 | P0 | Other users see smooth intermediate positions during drag/resize. Adaptive throttle: ~50ms for 1-5 users, ~100ms for 6-10, ~200ms for 11+. object:modified still fires as final authoritative update. No regression in 60fps local rendering. |
 
 ### Backlog (Not Yet Refined)
 
@@ -66,6 +64,7 @@ Decisions made during development that future work should respect.
 | 2026-02-18 | .env split: .env (shared) + .env.development (localhost) | Vite bakes env vars at build time; .env was gitignored so Render never saw localhost defaults | Production relies on hosting platform env vars. Dev uses .env.development. Fallback in yjs.ts warns instead of silently using localhost. |
 | 2026-02-18 | Fabric Group recreation for sticky notes on remote update | Fabric LayoutManager bugs when updating Group children in place | Every remote sticky note update destroys and recreates the Group. Acceptable perf for now. |
 | 2026-02-18 | object:modified only (no intermediate sync) | Initial implementation choice — simplest path | Causes "snap" behavior for remote viewers. RT-001 addresses this. |
+| 2026-02-19 | Throttled intermediate sync via object:moving/scaling | RT-001 — remote users need to see smooth movement during drag | Per-object throttle ref (same pattern as cursor throttle). Adaptive rate: 50ms ≤5 users, 100ms ≤10, 200ms 11+. Sticky note position-only updates skip Group recreation by tracking _stickyText/_stickyColor on the Fabric object. object:modified still fires as final authoritative sync. |
 
 ---
 
