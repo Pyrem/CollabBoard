@@ -8,24 +8,15 @@ import {
   type TPointerEventInfo,
 } from 'fabric';
 import type * as Y from 'yjs';
-import type { BoardObject, StickyNote, RectangleShape } from '@collabboard/shared';
+import type { BoardObject } from '@collabboard/shared';
 import type { CursorPosition } from '@collabboard/shared';
-import { DEFAULT_FILL, DEFAULT_STROKE, validateBoardObject } from '@collabboard/shared';
 import type { useBoard } from '../../hooks/useBoard.js';
 import { attachPanZoom } from './canvas/panZoom.js';
 import { attachSelectionManager } from './canvas/selectionManager.js';
 import { attachLocalModifications } from './canvas/localModifications.js';
-import {
-  getBoardId,
-  setBoardId,
-  getStickyContent,
-  setStickyContent,
-  createStickyGroup,
-  createRectFromData,
-  updateRectFromData,
-  findByBoardId,
-} from './canvas/fabricHelpers.js';
+import { getBoardId, findByBoardId } from './canvas/fabricHelpers.js';
 import { TextEditingOverlay } from './canvas/TextEditingOverlay.js';
+import { useObjectSync } from './canvas/useObjectSync.js';
 
 export interface SelectedObject {
   id: string;
@@ -64,15 +55,18 @@ interface CanvasProps {
 }
 
 /**
- * Imperative Fabric.js canvas that stays in sync with a Yjs shared map.
+ * Imperative Fabric.js canvas orchestrator.
  *
- * Mount effect creates the canvas and delegates to submodules:
- * - panZoom: pan (alt/middle-click) and zoom (scroll wheel)
- * - selectionManager: selection tracking and keyboard delete
- * - localModifications: object:moving/scaling/modified -> Yjs
+ * This component is purely a wiring layer — it owns the refs, creates the
+ * Fabric canvas, and delegates all behavior to focused submodules:
  *
- * Sync effect (depends on objectsMap) handles Yjs observer + initial load.
- * This will move to useObjectSync in Story 2.
+ * - {@link attachPanZoom}: pan (alt/middle-click) and zoom (scroll wheel)
+ * - {@link attachSelectionManager}: selection tracking and keyboard delete
+ * - {@link attachLocalModifications}: object:moving/scaling/modified -> Yjs
+ * - {@link useObjectSync}: Yjs observer + initial load -> Fabric
+ *
+ * The only business logic that remains here is the double-click-to-edit
+ * handler for sticky notes, because it sets React state (`editingSticky`).
  */
 export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
@@ -187,114 +181,8 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Observe Yjs changes and sync to Fabric canvas
-  // (Story 2 will extract this into useObjectSync)
-  useEffect(() => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-
-    /**
-     * Create or update a single Fabric object from a validated {@link BoardObject}.
-     *
-     * For sticky notes a position-only change does a lightweight `set`/`setCoords`;
-     * a text or color change recreates the entire `Group` (Fabric limitation).
-     * Rectangles are updated in-place via {@link updateRectFromData}.
-     *
-     * Skipped entirely when the change originated locally (prevents echo loops).
-     */
-    const syncObjectToCanvas = (id: string, data: BoardObject): void => {
-      if (isLocalUpdateRef.current || localUpdateIdsRef.current.delete(id)) return;
-
-      isRemoteUpdateRef.current = true;
-      const existing = findByBoardId(canvas, id);
-
-      if (existing) {
-        if (data.type === 'sticky') {
-          const stickyData = data as StickyNote;
-          const prev = getStickyContent(existing);
-
-          if (prev && prev.text === stickyData.text && prev.color === stickyData.color) {
-            existing.set({ left: stickyData.x, top: stickyData.y });
-            existing.setCoords();
-          } else {
-            const wasActive = canvas.getActiveObject() === existing;
-            canvas.remove(existing);
-            const group = createStickyGroup(stickyData);
-            setBoardId(group, id);
-            setStickyContent(group, stickyData.text, stickyData.color);
-            canvas.add(group);
-            group.setCoords();
-            if (wasActive) {
-              canvas.setActiveObject(group);
-            }
-          }
-        } else if (data.type === 'rectangle' && existing instanceof Rect) {
-          updateRectFromData(existing, data as RectangleShape);
-        }
-        canvas.renderAll();
-      } else {
-        if (data.type === 'sticky') {
-          const stickyData = data as StickyNote;
-          const group = createStickyGroup(stickyData);
-          setBoardId(group, id);
-          setStickyContent(group, stickyData.text, stickyData.color);
-          canvas.add(group);
-          group.setCoords();
-        } else if (data.type === 'rectangle') {
-          const rect = createRectFromData(data as RectangleShape);
-          canvas.add(rect);
-          rect.setCoords();
-        }
-        canvas.renderAll();
-      }
-      isRemoteUpdateRef.current = false;
-    };
-
-    /** Remove all Fabric objects matching the given board ID (handles duplicates). */
-    const removeObjectFromCanvas = (id: string): void => {
-      isRemoteUpdateRef.current = true;
-      const toRemove = canvas.getObjects().filter((obj) => getBoardId(obj) === id);
-      toRemove.forEach((obj) => canvas.remove(obj));
-      canvas.renderAll();
-      isRemoteUpdateRef.current = false;
-    };
-
-    // Initial load
-    const objects: Array<[string, BoardObject]> = [];
-    objectsMap.forEach((value, key) => {
-      const validated = validateBoardObject(value);
-      if (validated) {
-        objects.push([key, validated]);
-      } else {
-        console.warn(`[Canvas] Ignoring malformed object "${key}"`, value);
-      }
-    });
-    objects.sort((a, b) => a[1].zIndex - b[1].zIndex);
-    objects.forEach(([key, data]) => syncObjectToCanvas(key, data));
-
-    const observer = (events: Y.YMapEvent<unknown>): void => {
-      events.changes.keys.forEach((change, key) => {
-        if (change.action === 'add' || change.action === 'update') {
-          const raw = objectsMap.get(key);
-          const data = validateBoardObject(raw);
-          if (data) {
-            syncObjectToCanvas(key, data);
-          } else {
-            console.warn(`[Canvas] Ignoring malformed object "${key}"`, raw);
-          }
-        } else if (change.action === 'delete') {
-          removeObjectFromCanvas(key);
-        }
-      });
-    };
-
-    objectsMap.observe(observer);
-
-    return () => {
-      objectsMap.unobserve(observer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objectsMap]);
+  // Yjs -> Fabric sync: initial load + live observer
+  useObjectSync(fabricRef, objectsMap, isRemoteUpdateRef, isLocalUpdateRef, localUpdateIdsRef);
 
   // Restore opacity on the Fabric Group being edited
   const restoreEditingGroup = useCallback((): void => {

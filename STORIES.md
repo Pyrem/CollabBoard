@@ -4,8 +4,13 @@ Reference file for planned work. Each story has acceptance criteria, affected fi
 and notes on how it connects to the rest of the codebase.
 
 Current state (as of 2026-02-20):
-- Canvas.tsx is a single 677-line file containing pan/zoom, selection, object sync,
-  text editing overlay, local modification handlers, and keyboard shortcuts.
+- Canvas.tsx is a ~230-line orchestrator. All behavior is delegated to submodules:
+  - `canvas/fabricHelpers.ts`: pure Fabric object create/update functions
+  - `canvas/panZoom.ts`: pan (alt/middle-click) and zoom (scroll wheel) listeners
+  - `canvas/selectionManager.ts`: selection tracking and keyboard delete
+  - `canvas/localModifications.ts`: object:moving/scaling/modified -> Yjs
+  - `canvas/useObjectSync.ts`: Yjs observer + initial load -> Fabric
+  - `canvas/TextEditingOverlay.tsx`: sticky note textarea overlay
 - Implemented object types: sticky notes, rectangles.
 - Types defined but NOT implemented: circle, line, connector, frame, text.
 - `rotation` field exists in `BaseBoardObject` but is hard-disabled in Fabric
@@ -78,13 +83,13 @@ switches boards.
 
 ### Acceptance criteria
 
-- [ ] `useObjectSync` is a proper React hook with `objectsMap` in its dependency array
-- [ ] Uses helpers from `fabricHelpers.ts` (Story 1) for creating/updating Fabric objects
-- [ ] Adding a new object type requires only: (a) a create/update function in
+- [x] `useObjectSync` is a proper React hook with `objectsMap` in its dependency array
+- [x] Uses helpers from `fabricHelpers.ts` (Story 1) for creating/updating Fabric objects
+- [x] Adding a new object type requires only: (a) a create/update function in
       `fabricHelpers.ts`, (b) a new `case` in the sync switch inside `useObjectSync.ts`
-- [ ] Canvas.tsx is now purely an orchestrator — no business logic remains
+- [x] Canvas.tsx is now purely an orchestrator — no business logic remains
 - [ ] Multiplayer sync still works: changes from other users appear in real time
-- [ ] No regressions (`pnpm test`)
+- [x] No regressions (`pnpm test`)
 
 ### Files affected
 
