@@ -8,6 +8,25 @@ interface UseCursorsReturn {
   updateLocalCursor: (position: CursorPosition) => void;
 }
 
+/**
+ * Broadcast the local user's cursor position and receive remote cursors
+ * via the Yjs awareness protocol.
+ *
+ * On mount the local awareness state is initialised with the user's identity
+ * and a deterministic color derived from `userId`. Remote cursor positions are
+ * collected into the returned `remoteCursors` array whenever awareness changes.
+ *
+ * @param provider - Hocuspocus provider whose `awareness` instance is used.
+ *   Pass `null` before the connection is ready; the hook becomes a no-op.
+ * @param userId - Firebase UID for the local user.
+ * @param displayName - Display name shown on the cursor label.
+ * @param photoURL - Avatar URL (nullable) included in presence state.
+ * @returns
+ *   - `remoteCursors` — array of {@link UserPresence} objects for every
+ *     other connected client (excludes the local client).
+ *   - `updateLocalCursor` — call with a canvas-space `{ x, y }` on
+ *     `mouse:move`; throttled to {@link CURSOR_THROTTLE_MS} internally.
+ */
 export function useCursors(
   provider: HocuspocusProvider | null,
   userId: string,
@@ -76,6 +95,7 @@ export function useCursors(
   return { remoteCursors, updateLocalCursor };
 }
 
+/** Simple string hash used to pick a deterministic color from {@link PRESENCE_COLORS}. */
 function hashCode(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {

@@ -50,23 +50,40 @@ interface EditingState {
   color: string;
 }
 
-// Helper: get boardId from a Fabric object
+/**
+ * Read the board-object UUID stored on a Fabric object.
+ *
+ * Fabric has no first-class custom-data API, so the ID is stashed as a
+ * dynamic `boardId` property via an `unknown` cast.
+ */
 function getBoardId(obj: FabricObject): string | undefined {
   return (obj as unknown as { boardId?: string }).boardId;
 }
 
-// Helper: set boardId on a Fabric object
+/**
+ * Attach a board-object UUID to a Fabric object so it can be looked up
+ * later by {@link getBoardId}.
+ */
 function setBoardId(obj: FabricObject, id: string): void {
   (obj as unknown as { boardId: string }).boardId = id;
 }
 
-// Helpers: track sticky note content on the Fabric Group to detect position-only updates
+/**
+ * Cache a sticky note's text and color directly on the Fabric Group.
+ *
+ * Used by {@link syncObjectToCanvas} to detect whether a remote update is
+ * position-only (cheap move) vs. content-changed (requires Group recreation).
+ */
 function setStickyContent(obj: FabricObject, text: string, color: string): void {
   const record = obj as unknown as { _stickyText: string; _stickyColor: string };
   record._stickyText = text;
   record._stickyColor = color;
 }
 
+/**
+ * Retrieve the cached text/color from a Fabric Group set by {@link setStickyContent}.
+ * @returns The cached values, or `undefined` if they were never set.
+ */
 function getStickyContent(obj: FabricObject): { text: string; color: string } | undefined {
   const record = obj as unknown as { _stickyText?: string; _stickyColor?: string };
   if (record._stickyText !== undefined && record._stickyColor !== undefined) {
@@ -75,7 +92,17 @@ function getStickyContent(obj: FabricObject): { text: string; color: string } | 
   return undefined;
 }
 
-// Helper: create a sticky note Group from data
+/**
+ * Build a Fabric.js `Group` representing a sticky note.
+ *
+ * The group contains a colored background `Rect` and a `Textbox` with 10 px
+ * padding. Rotation and resize controls are disabled — sticky notes are
+ * fixed-size and can only be dragged.
+ *
+ * @param stickyData - Validated {@link StickyNote} from the Yjs map.
+ * @returns A new `Group` positioned at `(stickyData.x, stickyData.y)`.
+ *   Caller must call {@link setBoardId} and {@link setStickyContent} on it.
+ */
 function createStickyGroup(stickyData: StickyNote): Group {
   const bg = new Rect({
     width: stickyData.width,
@@ -122,6 +149,24 @@ function createStickyGroup(stickyData: StickyNote): Group {
   return group;
 }
 
+/**
+ * Imperative Fabric.js canvas that stays in sync with a Yjs shared map.
+ *
+ * Two `useEffect` blocks drive the lifecycle:
+ * 1. **Mount effect** — creates the `FabricCanvas`, wires pan/zoom, object
+ *    modification handlers, keyboard delete, and window resize.
+ * 2. **Sync effect** (depends on `objectsMap`) — performs the initial load of
+ *    all Yjs objects onto the canvas and attaches a Yjs observer that applies
+ *    remote add/update/delete events.
+ *
+ * Infinite-loop prevention uses three refs:
+ * - `isRemoteUpdateRef` — set `true` while applying a remote change to Fabric
+ *   so Fabric event handlers don't echo it back to Yjs.
+ * - `isLocalUpdateRef` — set `true` while writing a local change to Yjs so
+ *   the Yjs observer doesn't re-apply it to Fabric.
+ * - `localUpdateIdsRef` — per-object tracking for throttled intermediate
+ *   updates (drag/resize) where the flag alone isn't sufficient.
+ */
 export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
@@ -425,6 +470,18 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     const findByBoardId = (id: string): FabricObject | undefined =>
       canvas.getObjects().find((obj) => getBoardId(obj) === id);
 
+    /**
+     * Create or update a single Fabric object from a validated {@link BoardObject}.
+     *
+     * For sticky notes a position-only change does a lightweight `set`/`setCoords`;
+     * a text or color change recreates the entire `Group` (Fabric limitation).
+     * Rectangles are updated in-place.
+     *
+     * Skipped entirely when the change originated locally (prevents echo loops).
+     *
+     * @param id - Board object UUID (key in the Yjs map).
+     * @param data - Validated board object payload.
+     */
     const syncObjectToCanvas = (id: string, data: BoardObject): void => {
       // Skip if this change originated from a local handler (flag or per-object tracking)
       if (isLocalUpdateRef.current || localUpdateIdsRef.current.delete(id)) return;
@@ -506,6 +563,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       isRemoteUpdateRef.current = false;
     };
 
+    /** Remove all Fabric objects matching the given board ID (handles duplicates). */
     const removeObjectFromCanvas = (id: string): void => {
       isRemoteUpdateRef.current = true;
       const toRemove = canvas.getObjects().filter((obj) => getBoardId(obj) === id);

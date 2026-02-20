@@ -28,10 +28,32 @@ interface UseBoardReturn {
   clearAll: () => void;
 }
 
+/**
+ * CRUD operations for board objects backed by a shared Yjs map.
+ *
+ * Every mutation writes directly to `objectsMap`, which Yjs syncs to all
+ * connected clients automatically. The `userId` is stamped on every write
+ * via `lastModifiedBy`.
+ *
+ * @param objectsMap - The Yjs shared map (`Y.Map<unknown>`) keyed by object UUID.
+ *   Pass `null` before the Yjs provider is ready; all operations become no-ops.
+ * @param userId - Firebase UID of the current user, recorded on every mutation.
+ * @returns Stable callbacks for create / read / update / delete operations.
+ *
+ * @remarks
+ * - Object count is capped at {@link MAX_OBJECTS_PER_BOARD}; create functions
+ *   return `null` when the limit is reached.
+ * - `clearAll` wraps deletes in a single Yjs transaction so remote clients
+ *   receive one batched update.
+ */
 export function useBoard(
   objectsMap: Y.Map<unknown> | null,
   userId: string,
 ): UseBoardReturn {
+  /**
+   * Create a sticky note at the given position.
+   * @returns The new object's UUID, or `null` if the map is unavailable or full.
+   */
   const createStickyNote = useCallback(
     (x: number, y: number, text = '', color = DEFAULT_STICKY_COLOR): string | null => {
       if (!objectsMap) return null;
@@ -57,6 +79,10 @@ export function useBoard(
     [objectsMap, userId],
   );
 
+  /**
+   * Create a rectangle shape at the given position.
+   * @returns The new object's UUID, or `null` if the map is unavailable or full.
+   */
   const createRectangle = useCallback(
     (x: number, y: number, width = DEFAULT_RECT_WIDTH, height = DEFAULT_RECT_HEIGHT, fill = DEFAULT_FILL, stroke = DEFAULT_STROKE): string | null => {
       if (!objectsMap) return null;
@@ -82,6 +108,11 @@ export function useBoard(
     [objectsMap, userId],
   );
 
+  /**
+   * Merge partial updates into an existing board object.
+   * Automatically stamps `lastModifiedBy` and `lastModifiedAt`.
+   * No-op if the object doesn't exist.
+   */
   const updateObject = useCallback(
     (id: string, updates: Partial<BoardObject>): void => {
       if (!objectsMap) return;
@@ -97,6 +128,7 @@ export function useBoard(
     [objectsMap, userId],
   );
 
+  /** Remove a board object by ID. No-op if the map is unavailable. */
   const deleteObject = useCallback(
     (id: string): void => {
       if (!objectsMap) return;
@@ -105,6 +137,7 @@ export function useBoard(
     [objectsMap],
   );
 
+  /** Look up a single board object by ID. */
   const getObject = useCallback(
     (id: string): BoardObject | undefined => {
       if (!objectsMap) return undefined;
@@ -113,6 +146,7 @@ export function useBoard(
     [objectsMap],
   );
 
+  /** Return all board objects as a plain array (unordered). */
   const getAllObjects = useCallback((): BoardObject[] => {
     if (!objectsMap) return [];
     const objects: BoardObject[] = [];
@@ -122,11 +156,13 @@ export function useBoard(
     return objects;
   }, [objectsMap]);
 
+  /** Return the current number of objects on the board. */
   const getObjectCount = useCallback((): number => {
     if (!objectsMap) return 0;
     return objectsMap.size;
   }, [objectsMap]);
 
+  /** Delete every object on the board inside a single Yjs transaction. */
   const clearAll = useCallback((): void => {
     if (!objectsMap) return;
     const keys = Array.from(objectsMap.keys());
