@@ -6,6 +6,7 @@ import type {
   StickyNote,
   RectangleShape,
   TextElement,
+  Frame,
 } from '@collabboard/shared';
 import {
   DEFAULT_STICKY_COLOR,
@@ -19,6 +20,10 @@ import {
   DEFAULT_TEXT_FILL,
   DEFAULT_TEXT_WIDTH,
   DEFAULT_TEXT_HEIGHT,
+  DEFAULT_FRAME_WIDTH,
+  DEFAULT_FRAME_HEIGHT,
+  DEFAULT_FRAME_FILL,
+  DEFAULT_FRAME_TITLE,
   MAX_OBJECTS_PER_BOARD,
   logger,
 } from '@collabboard/shared';
@@ -29,6 +34,7 @@ export interface UseBoardReturn {
   createStickyNote: (x: number, y: number, text?: string, color?: string) => string | null;
   createRectangle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string | null;
   createText: (x: number, y: number, text?: string, fontSize?: number, fill?: string) => string | null;
+  createFrame: (x: number, y: number, title?: string, width?: number, height?: number, fill?: string) => string | null;
   updateObject: (id: string, updates: Partial<BoardObject>) => void;
   deleteObject: (id: string) => void;
   getObject: (id: string) => BoardObject | undefined;
@@ -145,6 +151,35 @@ export function useBoard(
         fill,
       };
       objectsMap.set(id, textElement);
+      return id;
+    },
+    [objectsMap, userId],
+  );
+
+  /**
+   * Create a frame at the given position.
+   * @returns The new object's UUID, or `null` if the map is unavailable or full.
+   */
+  const createFrame = useCallback(
+    (x: number, y: number, title = DEFAULT_FRAME_TITLE, width = DEFAULT_FRAME_WIDTH, height = DEFAULT_FRAME_HEIGHT, fill = DEFAULT_FRAME_FILL): string | null => {
+      if (!objectsMap) return null;
+      if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
+      const id = uuidv4();
+      const frame: Frame = {
+        id,
+        type: 'frame',
+        x,
+        y,
+        width,
+        height,
+        rotation: 0,
+        zIndex: 0, // Frames render behind everything
+        lastModifiedBy: userId,
+        lastModifiedAt: Date.now(),
+        title,
+        fill,
+      };
+      objectsMap.set(id, frame);
       return id;
     },
     [objectsMap, userId],
@@ -289,6 +324,7 @@ export function useBoard(
     createStickyNote,
     createRectangle,
     createText,
+    createFrame,
     updateObject,
     deleteObject,
     getObject,

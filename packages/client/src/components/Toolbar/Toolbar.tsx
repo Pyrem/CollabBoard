@@ -10,7 +10,7 @@ interface ToolbarProps {
   getSceneCenter: () => { x: number; y: number };
 }
 
-type Tool = 'select' | 'sticky' | 'rectangle' | 'text';
+type Tool = 'select' | 'sticky' | 'rectangle' | 'text' | 'frame';
 
 const FONT_SIZES = [14, 20, 28, 36, 48] as const;
 
@@ -48,6 +48,11 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
         undefined,
         selectedColor === STICKY_COLORS[0] ? undefined : selectedColor,
       );
+    } else if (tool === 'frame') {
+      result = board.createFrame(
+        center.x - 200,
+        center.y - 150,
+      );
     }
     if (result === null && tool !== 'select') {
       window.alert(`Object limit reached (${String(MAX_OBJECTS_PER_BOARD)}). Delete some objects before creating new ones.`);
@@ -69,6 +74,8 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
       } else if (selectedObject.type === 'rectangle') {
         board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
       } else if (selectedObject.type === 'text') {
+        board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
+      } else if (selectedObject.type === 'frame') {
         board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
       }
     }
@@ -115,6 +122,16 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
         title="Text (T)"
       >
         Text
+      </button>
+      <button
+        style={{
+          ...styles.toolBtn,
+          ...(activeTool === 'frame' ? styles.active : {}),
+        }}
+        onClick={() => handleToolClick('frame')}
+        title="Frame (F)"
+      >
+        Frame
       </button>
 
       <div style={styles.separator} />

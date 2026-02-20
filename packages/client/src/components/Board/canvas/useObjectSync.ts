@@ -5,7 +5,7 @@ import {
   Textbox,
 } from 'fabric';
 import type * as Y from 'yjs';
-import type { BoardObject, StickyNote, RectangleShape, TextElement } from '@collabboard/shared';
+import type { BoardObject, StickyNote, RectangleShape, TextElement, Frame } from '@collabboard/shared';
 import { validateBoardObject } from '@collabboard/shared';
 import {
   getBoardId,
@@ -17,6 +17,9 @@ import {
   updateRectFromData,
   createTextFromData,
   updateTextFromData,
+  getFrameContent,
+  setFrameContent,
+  createFrameFromData,
   findByBoardId,
 } from './fabricHelpers.js';
 
@@ -108,11 +111,35 @@ export function useObjectSync(
             }
             break;
           }
+          case 'frame': {
+            const frameData = data as Frame;
+            const prev = getFrameContent(existing);
+
+            if (prev && prev.title === frameData.title && prev.fill === frameData.fill &&
+                prev.width === frameData.width && prev.height === frameData.height) {
+              // Position/rotation-only change — lightweight update
+              existing.set({ left: frameData.x, top: frameData.y, angle: frameData.rotation });
+              existing.setCoords();
+            } else {
+              // Content or size changed — recreate the Group
+              const wasActive = canvas.getActiveObject() === existing;
+              canvas.remove(existing);
+              const group = createFrameFromData(frameData);
+              setBoardId(group, id);
+              setFrameContent(group, frameData.title, frameData.fill, frameData.width, frameData.height);
+              canvas.add(group);
+              canvas.sendObjectToBack(group);
+              group.setCoords();
+              if (wasActive) {
+                canvas.setActiveObject(group);
+              }
+            }
+            break;
+          }
           // Future object types go here:
           // case 'circle': { ... break; }
           // case 'line': { ... break; }
           // case 'connector': { ... break; }
-          // case 'frame': { ... break; }
           default:
             // Unhandled type — log and skip so we don't crash on unknown data
             console.warn(`[useObjectSync] Unhandled object type for update: "${data.type}"`);
@@ -142,11 +169,20 @@ export function useObjectSync(
             textbox.setCoords();
             break;
           }
+          case 'frame': {
+            const frameData = data as Frame;
+            const group = createFrameFromData(frameData);
+            setBoardId(group, id);
+            setFrameContent(group, frameData.title, frameData.fill, frameData.width, frameData.height);
+            canvas.add(group);
+            canvas.sendObjectToBack(group);
+            group.setCoords();
+            break;
+          }
           // Future object types go here:
           // case 'circle': { ... break; }
           // case 'line': { ... break; }
           // case 'connector': { ... break; }
-          // case 'frame': { ... break; }
           default:
             console.warn(`[useObjectSync] Unhandled object type for create: "${data.type}"`);
         }

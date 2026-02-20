@@ -1,9 +1,9 @@
 import { Canvas as FabricCanvas, Group, ActiveSelection, Textbox, util } from 'fabric';
 import type { MutableRefObject, RefObject } from 'react';
 import { getObjectSyncThrottle, getAdaptiveThrottleMs, logger } from '@collabboard/shared';
-import type { BoardObject } from '@collabboard/shared';
+import type { BoardObject, Frame } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
-import { getBoardId } from './fabricHelpers.js';
+import { getBoardId, setBoardId, setFrameContent, createFrameFromData, findByBoardId } from './fabricHelpers.js';
 
 const log = logger('throttle');
 
@@ -100,13 +100,17 @@ export function attachLocalModifications(
       const groupScaleY = obj.scaleY ?? 1;
       const children = obj.getObjects();
 
-      // Counteract scale on sticky notes
+      // Counteract scale on sticky notes (not frames — frames are resizable)
       for (const child of children) {
         if (child instanceof Group) {
-          child.set({
-            scaleX: 1 / groupScaleX,
-            scaleY: 1 / groupScaleY,
-          });
+          const childId = getBoardId(child);
+          const boardData = childId ? boardRef.current.getObject(childId) : undefined;
+          if (boardData?.type !== 'frame') {
+            child.set({
+              scaleX: 1 / groupScaleX,
+              scaleY: 1 / groupScaleY,
+            });
+          }
         }
       }
       canvas.requestRenderAll();
@@ -255,18 +259,37 @@ export function attachLocalModifications(
         localUpdateIdsRef.current.add(childId);
 
         if (child instanceof Group) {
-          // Sticky notes: position + rotation only (fixed-size).
-          // Reset any residual scale from group transform.
-          child.set({ scaleX: 1, scaleY: 1 });
-          child.setCoords();
-          updates.push({
-            id: childId,
-            updates: {
-              x: decomposed.translateX,
-              y: decomposed.translateY,
-              rotation: decomposed.angle,
-            },
-          });
+          const boardData = boardRef.current.getObject(childId);
+          if (boardData?.type === 'frame') {
+            // Frames: resizable — compute actual dimensions from decomposed scale
+            const actualWidth = (child.width ?? 0) * decomposed.scaleX;
+            const actualHeight = (child.height ?? 0) * decomposed.scaleY;
+            child.set({ scaleX: 1, scaleY: 1 });
+            child.setCoords();
+            updates.push({
+              id: childId,
+              updates: {
+                x: decomposed.translateX,
+                y: decomposed.translateY,
+                width: actualWidth,
+                height: actualHeight,
+                rotation: decomposed.angle,
+              },
+            });
+          } else {
+            // Sticky notes: position + rotation only (fixed-size).
+            // Reset any residual scale from group transform.
+            child.set({ scaleX: 1, scaleY: 1 });
+            child.setCoords();
+            updates.push({
+              id: childId,
+              updates: {
+                x: decomposed.translateX,
+                y: decomposed.translateY,
+                rotation: decomposed.angle,
+              },
+            });
+          }
         } else {
           const actualWidth = (child.width ?? 0) * decomposed.scaleX;
           const actualHeight = (child.height ?? 0) * decomposed.scaleY;
@@ -297,6 +320,26 @@ export function attachLocalModifications(
         isLocalUpdateRef.current = false;
       }
 
+      // Reconstruct frame Groups that were resized (their internal children
+      // need rebuilding after scale normalisation)
+      for (const { id: updateId, updates: upd } of updates) {
+        if (upd.width !== undefined) {
+          const frameData = boardRef.current.getObject(updateId);
+          if (frameData?.type === 'frame') {
+            const oldObj = findByBoardId(canvas, updateId);
+            if (oldObj) {
+              canvas.remove(oldObj);
+              const newGroup = createFrameFromData(frameData as Frame);
+              setBoardId(newGroup, updateId);
+              setFrameContent(newGroup, (frameData as Frame).title, (frameData as Frame).fill, frameData.width, frameData.height);
+              canvas.add(newGroup);
+              canvas.sendObjectToBack(newGroup);
+              newGroup.setCoords();
+            }
+          }
+        }
+      }
+
       canvas.renderAll();
       return;
     }
@@ -319,12 +362,42 @@ export function attachLocalModifications(
     });
 
     if (obj instanceof Group) {
-      // Sticky notes: position + rotation (fixed-size, no scale normalisation)
-      boardRef.current.updateObject(id, {
-        x: obj.left ?? 0,
-        y: obj.top ?? 0,
-        rotation: obj.angle ?? 0,
-      });
+      const boardData = boardRef.current.getObject(id);
+      if (boardData?.type === 'frame') {
+        // Frames are resizable — compute actual dimensions from scale
+        const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
+        const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
+
+        boardRef.current.updateObject(id, {
+          x: obj.left ?? 0,
+          y: obj.top ?? 0,
+          width: actualWidth,
+          height: actualHeight,
+          rotation: obj.angle ?? 0,
+        });
+
+        // Normalise scale and reconstruct the Group
+        obj.set({ scaleX: 1, scaleY: 1 });
+        obj.setCoords();
+
+        const frameData = boardRef.current.getObject(id);
+        if (frameData?.type === 'frame') {
+          canvas.remove(obj);
+          const newGroup = createFrameFromData(frameData as Frame);
+          setBoardId(newGroup, id);
+          setFrameContent(newGroup, (frameData as Frame).title, (frameData as Frame).fill, frameData.width, frameData.height);
+          canvas.add(newGroup);
+          canvas.sendObjectToBack(newGroup);
+          newGroup.setCoords();
+        }
+      } else {
+        // Sticky notes: position + rotation (fixed-size, no scale normalisation)
+        boardRef.current.updateObject(id, {
+          x: obj.left ?? 0,
+          y: obj.top ?? 0,
+          rotation: obj.angle ?? 0,
+        });
+      }
     } else {
       const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
       const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);

@@ -21,6 +21,12 @@ export const DEFAULT_RECT_HEIGHT = 100;
 export const DEFAULT_CIRCLE_WIDTH = 100;
 export const DEFAULT_CIRCLE_HEIGHT = 100;
 
+// Default frame properties
+export const DEFAULT_FRAME_WIDTH = 400;
+export const DEFAULT_FRAME_HEIGHT = 300;
+export const DEFAULT_FRAME_FILL = 'rgba(200, 200, 200, 0.15)';
+export const DEFAULT_FRAME_TITLE = 'Frame';
+
 // Default text element properties
 export const DEFAULT_TEXT_FONT_SIZE = 20;
 export const DEFAULT_TEXT_FILL = '#333333';

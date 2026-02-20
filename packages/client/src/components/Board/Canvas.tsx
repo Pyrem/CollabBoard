@@ -44,6 +44,8 @@ export interface EditingState {
   color: string;
   /** Rotation angle in degrees, used to CSS-rotate the textarea overlay. */
   rotation: number;
+  /** The board object type being edited (sticky vs frame title). */
+  objectType: 'sticky' | 'frame';
 }
 
 interface CanvasProps {
@@ -130,39 +132,69 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       isRemoteUpdateRef, isLocalUpdateRef, localUpdateIdsRef, lastObjectSyncRef,
     );
 
-    // Double-click to edit sticky note text — stays here because it sets React state
+    // Double-click to edit sticky note text or frame title — stays here because it sets React state
     const onDblClick = (opt: TPointerEventInfo<TPointerEvent>): void => {
       const target = opt.target;
       if (!target || !(target instanceof Group)) return;
       const id = getBoardId(target);
       if (!id) return;
 
+      const boardData = boardRef.current.getObject(id);
+      const objType = boardData?.type;
+
       const zoom = canvas.getZoom();
       const vpt = canvas.viewportTransform;
       if (!vpt) return;
       const screenX = (target.left ?? 0) * zoom + vpt[4];
       const screenY = (target.top ?? 0) * zoom + vpt[5];
-      const screenWidth = (target.width ?? 200) * zoom;
-      const screenHeight = (target.height ?? 200) * zoom;
 
-      const textObj = target.getObjects().find((o) => o instanceof Textbox) as Textbox | undefined;
-      const bgObj = target.getObjects().find((o) => o instanceof Rect) as Rect | undefined;
-      const currentText = textObj?.text ?? '';
-      const stickyColor = (bgObj?.fill as string) ?? '#FFEB3B';
+      if (objType === 'frame') {
+        // Frame: edit only the title area (top strip)
+        const screenWidth = (target.width ?? 400) * zoom;
+        const titleHeight = 30 * zoom;
 
-      target.set('opacity', 0);
-      canvas.renderAll();
+        const textObj = target.getObjects().find((o) => o instanceof Textbox) as Textbox | undefined;
+        const currentTitle = textObj?.text ?? '';
 
-      setEditingSticky({
-        id,
-        text: currentText === 'Type here...' ? '' : currentText,
-        screenX,
-        screenY,
-        width: screenWidth,
-        height: screenHeight,
-        color: stickyColor,
-        rotation: target.angle ?? 0,
-      });
+        target.set('opacity', 0);
+        canvas.renderAll();
+
+        setEditingSticky({
+          id,
+          text: currentTitle === 'Frame' ? '' : currentTitle,
+          screenX,
+          screenY,
+          width: screenWidth,
+          height: titleHeight,
+          color: 'rgba(200, 200, 200, 0.3)',
+          rotation: target.angle ?? 0,
+          objectType: 'frame',
+        });
+      } else {
+        // Sticky note: edit the full area
+        const screenWidth = (target.width ?? 200) * zoom;
+        const screenHeight = (target.height ?? 200) * zoom;
+
+        const textObj = target.getObjects().find((o) => o instanceof Textbox) as Textbox | undefined;
+        const bgObj = target.getObjects().find((o) => o instanceof Rect) as Rect | undefined;
+        const currentText = textObj?.text ?? '';
+        const stickyColor = (bgObj?.fill as string) ?? '#FFEB3B';
+
+        target.set('opacity', 0);
+        canvas.renderAll();
+
+        setEditingSticky({
+          id,
+          text: currentText === 'Type here...' ? '' : currentText,
+          screenX,
+          screenY,
+          width: screenWidth,
+          height: screenHeight,
+          color: stickyColor,
+          rotation: target.angle ?? 0,
+          objectType: 'sticky',
+        });
+      }
     };
     canvas.on('mouse:dblclick', onDblClick);
 
@@ -216,7 +248,11 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       const finalText = text.trim() || '';
       // Flush stale per-object flag so the Yjs observer sees this write
       localUpdateIdsRef.current.delete(editing.id);
-      boardRef.current.updateObject(editing.id, { text: finalText } as Partial<BoardObject>);
+      if (editing.objectType === 'frame') {
+        boardRef.current.updateObject(editing.id, { title: finalText || 'Frame' } as Partial<BoardObject>);
+      } else {
+        boardRef.current.updateObject(editing.id, { text: finalText } as Partial<BoardObject>);
+      }
       restoreEditingGroup();
       setEditingSticky(null);
     },

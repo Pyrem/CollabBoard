@@ -5,7 +5,7 @@ import {
   Group,
   type FabricObject,
 } from 'fabric';
-import type { StickyNote, RectangleShape, TextElement } from '@collabboard/shared';
+import type { StickyNote, RectangleShape, TextElement, Frame } from '@collabboard/shared';
 import { DEFAULT_FILL, DEFAULT_STROKE } from '@collabboard/shared';
 
 /**
@@ -214,6 +214,85 @@ export function updateTextFromData(existing: Textbox, textData: TextElement): vo
     existing.set('text', textData.text || 'Type here');
   }
   existing.setCoords();
+}
+
+/**
+ * Cache a frame's title, fill, width, and height on the Fabric Group.
+ *
+ * Used by the sync layer to detect whether a remote update is
+ * position-only (cheap move) vs. content/size-changed (requires Group recreation).
+ */
+export function setFrameContent(obj: FabricObject, title: string, fill: string, width: number, height: number): void {
+  const record = obj as unknown as { _frameTitle: string; _frameFill: string; _frameWidth: number; _frameHeight: number };
+  record._frameTitle = title;
+  record._frameFill = fill;
+  record._frameWidth = width;
+  record._frameHeight = height;
+}
+
+/**
+ * Retrieve the cached frame content set by {@link setFrameContent}.
+ * @returns The cached values, or `undefined` if they were never set.
+ */
+export function getFrameContent(obj: FabricObject): { title: string; fill: string; width: number; height: number } | undefined {
+  const record = obj as unknown as { _frameTitle?: string; _frameFill?: string; _frameWidth?: number; _frameHeight?: number };
+  if (record._frameTitle !== undefined && record._frameFill !== undefined &&
+      record._frameWidth !== undefined && record._frameHeight !== undefined) {
+    return { title: record._frameTitle, fill: record._frameFill, width: record._frameWidth, height: record._frameHeight };
+  }
+  return undefined;
+}
+
+/**
+ * Build a Fabric.js `Group` representing a frame.
+ *
+ * The group contains a semi-transparent background `Rect` with a dashed border
+ * and a `Textbox` title label positioned at the top-left. Unlike sticky notes,
+ * frames are resizable — scaling controls are enabled.
+ *
+ * @param frameData - Validated {@link Frame} from the Yjs map.
+ * @returns A new `Group` positioned at `(frameData.x, frameData.y)`.
+ *   Caller must call {@link setBoardId} and {@link setFrameContent} on it.
+ */
+export function createFrameFromData(frameData: Frame): Group {
+  const bg = new Rect({
+    width: frameData.width,
+    height: frameData.height,
+    fill: frameData.fill || 'rgba(200, 200, 200, 0.15)',
+    stroke: '#999',
+    strokeWidth: 1,
+    rx: 4,
+    ry: 4,
+    strokeDashArray: [6, 4],
+  });
+
+  const title = new Textbox(frameData.title || 'Frame', {
+    fontSize: 14,
+    fill: '#666',
+    fontWeight: 'bold',
+    width: frameData.width - 20,
+    textAlign: 'left',
+    splitByGrapheme: true,
+    stroke: null,
+    strokeWidth: 0,
+  });
+
+  const group = new Group([bg, title], {
+    left: frameData.x,
+    top: frameData.y,
+    angle: frameData.rotation,
+    subTargetCheck: false,
+    interactive: false,
+    // Frames are resizable — no lockScaling
+  });
+
+  const halfW = group.width / 2;
+  const halfH = group.height / 2;
+  bg.set({ left: -halfW, top: -halfH, width: group.width, height: group.height });
+  title.set({ left: -halfW + 10, top: -halfH + 8, width: group.width - 20 });
+  group.dirty = true;
+
+  return group;
 }
 
 /** Find a Fabric object on the canvas by its board UUID. */
