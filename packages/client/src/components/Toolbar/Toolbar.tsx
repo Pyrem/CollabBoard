@@ -7,15 +7,16 @@ import { STICKY_COLORS, MAX_OBJECTS_PER_BOARD, THROTTLE } from '@collabboard/sha
 interface ToolbarProps {
   board: ReturnType<typeof useBoard>;
   selectedObject: SelectedObject | null;
+  activeTool: string;
+  onToolChange: (tool: string) => void;
   getSceneCenter: () => { x: number; y: number };
 }
 
-type Tool = 'select' | 'sticky' | 'rectangle' | 'text' | 'frame';
+type Tool = 'select' | 'sticky' | 'rectangle' | 'text' | 'frame' | 'connector';
 
 const FONT_SIZES = [14, 20, 28, 36, 48] as const;
 
-export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps): React.JSX.Element {
-  const [activeTool, setActiveTool] = useState<Tool>('select');
+export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSceneCenter }: ToolbarProps): React.JSX.Element {
   const [selectedColor, setSelectedColor] = useState<string>(STICKY_COLORS[0]);
   const lastColorChangeRef = useRef(0);
 
@@ -23,6 +24,12 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
   const atLimit = objectCount >= MAX_OBJECTS_PER_BOARD;
 
   const handleToolClick = (tool: Tool): void => {
+    // Connector tool is modal — don't create anything on click, just activate
+    if (tool === 'connector') {
+      onToolChange('connector');
+      return;
+    }
+
     const center = getSceneCenter();
     let result: string | null = null;
     if (tool === 'sticky') {
@@ -58,7 +65,7 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
       window.alert(`Object limit reached (${String(MAX_OBJECTS_PER_BOARD)}). Delete some objects before creating new ones.`);
       return;
     }
-    setActiveTool(tool);
+    onToolChange(tool);
   };
 
   const handleColorClick = (color: string): void => {
@@ -77,6 +84,8 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
         board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
       } else if (selectedObject.type === 'frame') {
         board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
+      } else if (selectedObject.type === 'connector') {
+        board.updateObject(selectedObject.id, { stroke: color } as Partial<BoardObject>);
       }
     }
   };
@@ -88,7 +97,7 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
           ...styles.toolBtn,
           ...(activeTool === 'select' ? styles.active : {}),
         }}
-        onClick={() => setActiveTool('select')}
+        onClick={() => onToolChange('select')}
         title="Select (V)"
       >
         Select
@@ -132,6 +141,16 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
         title="Frame (F)"
       >
         Frame
+      </button>
+      <button
+        style={{
+          ...styles.toolBtn,
+          ...(activeTool === 'connector' ? styles.active : {}),
+        }}
+        onClick={() => handleToolClick('connector')}
+        title="Connector (C)"
+      >
+        Connect
       </button>
 
       <div style={styles.separator} />

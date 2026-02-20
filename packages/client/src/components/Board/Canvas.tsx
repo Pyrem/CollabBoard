@@ -14,7 +14,7 @@ import type { useBoard } from '../../hooks/useBoard.js';
 import { attachPanZoom } from './canvas/panZoom.js';
 import { attachSelectionManager } from './canvas/selectionManager.js';
 import { attachLocalModifications } from './canvas/localModifications.js';
-import { getBoardId, findByBoardId } from './canvas/fabricHelpers.js';
+import { getBoardId, findByBoardId, getNearestPorts } from './canvas/fabricHelpers.js';
 import { TextEditingOverlay } from './canvas/TextEditingOverlay.js';
 import { useObjectSync } from './canvas/useObjectSync.js';
 
@@ -52,6 +52,8 @@ interface CanvasProps {
   objectsMap: Y.Map<unknown>;
   board: ReturnType<typeof useBoard>;
   userCount: number;
+  activeTool: string;
+  onToolChange: (tool: string) => void;
   onCursorMove: (position: CursorPosition, heavy?: boolean) => void;
   onSelectionChange: (selected: SelectedObject | null) => void;
   onReady: (getSceneCenter: () => SceneCenter) => void;
@@ -72,7 +74,7 @@ interface CanvasProps {
  * The only business logic that remains here is the double-click-to-edit
  * handler for sticky notes, because it sets React state (`editingSticky`).
  */
-export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
+export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
@@ -84,11 +86,18 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
   const editingStickyRef = useRef(editingSticky);
   editingStickyRef.current = editingSticky;
 
+  // Connector creation mode: stores the first object ID while waiting for the second click
+  const [pendingConnectorFrom, setPendingConnectorFrom] = useState<string | null>(null);
+
   // Keep refs in sync with latest props
   const boardRef = useRef(board);
   boardRef.current = board;
   const userCountRef = useRef(userCount);
   userCountRef.current = userCount;
+  const activeToolRef = useRef(activeTool);
+  activeToolRef.current = activeTool;
+  const onToolChangeRef = useRef(onToolChange);
+  onToolChangeRef.current = onToolChange;
   const onCursorMoveRef = useRef(onCursorMove);
   onCursorMoveRef.current = onCursorMove;
   const onSelectionChangeRef = useRef(onSelectionChange);
@@ -97,6 +106,8 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
   onReadyRef.current = onReady;
   const onViewportChangeRef = useRef(onViewportChange);
   onViewportChangeRef.current = onViewportChange;
+  const pendingConnectorFromRef = useRef(pendingConnectorFrom);
+  pendingConnectorFromRef.current = pendingConnectorFrom;
 
   // Initialize Fabric.js canvas — runs once on mount
   useEffect(() => {
@@ -198,6 +209,50 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     };
     canvas.on('mouse:dblclick', onDblClick);
 
+    // Connector creation mode: click first object, click second object
+    const onMouseDown = (opt: TPointerEventInfo<TPointerEvent>): void => {
+      if (activeToolRef.current !== 'connector') return;
+      const target = opt.target;
+      if (!target) {
+        // Clicked empty space — cancel pending connector
+        setPendingConnectorFrom(null);
+        return;
+      }
+      const id = getBoardId(target);
+      if (!id) return;
+
+      // Don't allow connecting connectors to themselves
+      const objData = boardRef.current.getObject(id);
+      if (!objData || objData.type === 'connector') return;
+
+      const pendingFrom = pendingConnectorFromRef.current;
+      if (!pendingFrom) {
+        // First click — store the source object
+        setPendingConnectorFrom(id);
+        canvas.discardActiveObject();
+        canvas.renderAll();
+      } else {
+        // Second click — create the connector
+        if (pendingFrom === id) {
+          // Same object — ignore
+          return;
+        }
+        const fromObj = findByBoardId(canvas, pendingFrom);
+        const toObj = findByBoardId(canvas, id);
+        if (fromObj && toObj) {
+          const ports = getNearestPorts(fromObj, toObj);
+          boardRef.current.createConnector(
+            pendingFrom, id,
+            ports.from.x, ports.from.y,
+            ports.to.x, ports.to.y,
+          );
+        }
+        setPendingConnectorFrom(null);
+        onToolChangeRef.current('select');
+      }
+    };
+    canvas.on('mouse:down', onMouseDown);
+
     // Handle window resize
     const handleResize = (): void => {
       canvas.setDimensions({ width: window.innerWidth, height: window.innerHeight });
@@ -209,6 +264,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       cleanupSelection();
       cleanupModifications();
       canvas.off('mouse:dblclick', onDblClick);
+      canvas.off('mouse:down', onMouseDown);
       window.removeEventListener('resize', handleResize);
       canvas.dispose();
       fabricRef.current = null;
@@ -259,9 +315,36 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     [restoreEditingGroup],
   );
 
+  // Reset pending connector when tool changes away from 'connector'
+  const prevToolRef = useRef(activeTool);
+  if (prevToolRef.current === 'connector' && activeTool !== 'connector' && pendingConnectorFrom !== null) {
+    setPendingConnectorFrom(null);
+  }
+  prevToolRef.current = activeTool;
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <canvas ref={canvasElRef} style={{ display: 'block' }} />
+      {activeTool === 'connector' && (
+        <div style={{
+          position: 'absolute',
+          top: 12,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          color: '#fff',
+          padding: '6px 16px',
+          borderRadius: 8,
+          fontSize: 13,
+          fontWeight: 500,
+          zIndex: 100,
+          pointerEvents: 'none',
+        }}>
+          {pendingConnectorFrom
+            ? 'Click the second object to connect'
+            : 'Click the first object to start a connector'}
+        </div>
+      )}
       {editingSticky && (
         <TextEditingOverlay
           editing={editingSticky}

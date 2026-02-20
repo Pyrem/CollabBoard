@@ -7,6 +7,7 @@ import type {
   RectangleShape,
   TextElement,
   Frame,
+  Connector,
 } from '@collabboard/shared';
 import {
   DEFAULT_STICKY_COLOR,
@@ -24,6 +25,7 @@ import {
   DEFAULT_FRAME_HEIGHT,
   DEFAULT_FRAME_FILL,
   DEFAULT_FRAME_TITLE,
+  DEFAULT_CONNECTOR_STROKE,
   MAX_OBJECTS_PER_BOARD,
   logger,
 } from '@collabboard/shared';
@@ -35,6 +37,7 @@ export interface UseBoardReturn {
   createRectangle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string | null;
   createText: (x: number, y: number, text?: string, fontSize?: number, fill?: string) => string | null;
   createFrame: (x: number, y: number, title?: string, width?: number, height?: number, fill?: string) => string | null;
+  createConnector: (fromId: string, toId: string, fromX: number, fromY: number, toX: number, toY: number, stroke?: string) => string | null;
   updateObject: (id: string, updates: Partial<BoardObject>) => void;
   deleteObject: (id: string) => void;
   getObject: (id: string) => BoardObject | undefined;
@@ -186,6 +189,42 @@ export function useBoard(
   );
 
   /**
+   * Create a connector between two objects.
+   *
+   * Endpoint coordinates (fromX/Y, toX/Y) are pre-computed by the caller
+   * from connection-point helpers. They are stored in `x, y` (from-point)
+   * and `width, height` (to-point) — repurposing BaseBoardObject fields.
+   *
+   * @returns The new connector's UUID, or `null` if the map is unavailable or full.
+   */
+  const createConnector = useCallback(
+    (fromId: string, toId: string, fromX: number, fromY: number, toX: number, toY: number, stroke = DEFAULT_CONNECTOR_STROKE): string | null => {
+      if (!objectsMap) return null;
+      if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
+      const id = uuidv4();
+      const connector: Connector = {
+        id,
+        type: 'connector',
+        x: fromX,
+        y: fromY,
+        width: toX,   // repurposed: to-point X
+        height: toY,  // repurposed: to-point Y
+        rotation: 0,
+        zIndex: objectsMap.size,
+        lastModifiedBy: userId,
+        lastModifiedAt: Date.now(),
+        fromId,
+        toId,
+        stroke,
+        style: 'straight',
+      };
+      objectsMap.set(id, connector);
+      return id;
+    },
+    [objectsMap, userId],
+  );
+
+  /**
    * Merge partial updates into an existing board object.
    * Automatically stamps `lastModifiedBy` and `lastModifiedAt`.
    * No-op if the object doesn't exist.
@@ -325,6 +364,7 @@ export function useBoard(
     createRectangle,
     createText,
     createFrame,
+    createConnector,
     updateObject,
     deleteObject,
     getObject,

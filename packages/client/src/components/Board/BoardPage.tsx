@@ -37,6 +37,7 @@ export function BoardPage(): React.JSX.Element {
 
   const [selectedObject, setSelectedObject] = useState<SelectedObject | null>(null);
   const [viewport, setViewport] = useState<ViewportState>({ zoom: 1, panX: 0, panY: 0 });
+  const [activeTool, setActiveTool] = useState<string>('select');
   const getSceneCenterRef = useRef<(() => SceneCenter) | null>(null);
 
   const handleSelectionChange = useCallback((selected: SelectedObject | null) => {
@@ -65,13 +66,15 @@ export function BoardPage(): React.JSX.Element {
         objectsMap={yjs.objectsMap}
         board={board}
         userCount={onlineUsers.length}
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
         onCursorMove={updateLocalCursor}
         onSelectionChange={handleSelectionChange}
         onReady={handleCanvasReady}
         onViewportChange={handleViewportChange}
       />
       <CursorOverlay cursors={remoteCursors} viewport={viewport} />
-      <Toolbar board={board} selectedObject={selectedObject} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
+      <Toolbar board={board} selectedObject={selectedObject} activeTool={activeTool} onToolChange={setActiveTool} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
       <PresencePanel users={onlineUsers} />
       <button onClick={() => void handleLogout()} style={styles.logoutBtn}>
         Log out

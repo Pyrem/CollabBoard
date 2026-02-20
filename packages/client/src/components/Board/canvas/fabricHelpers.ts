@@ -3,10 +3,11 @@ import {
   Rect,
   Textbox,
   Group,
+  Line,
   type FabricObject,
 } from 'fabric';
-import type { StickyNote, RectangleShape, TextElement, Frame } from '@collabboard/shared';
-import { DEFAULT_FILL, DEFAULT_STROKE } from '@collabboard/shared';
+import type { StickyNote, RectangleShape, TextElement, Frame, Connector } from '@collabboard/shared';
+import { DEFAULT_FILL, DEFAULT_STROKE, DEFAULT_CONNECTOR_STROKE, DEFAULT_CONNECTOR_STROKE_WIDTH, CONNECTOR_ARROW_SIZE } from '@collabboard/shared';
 
 /**
  * Read the board-object UUID stored on a Fabric object.
@@ -293,6 +294,124 @@ export function createFrameFromData(frameData: Frame): Group {
   group.dirty = true;
 
   return group;
+}
+
+// ---------------------------------------------------------------------------
+// Connection points & connectors
+// ---------------------------------------------------------------------------
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * Compute the 4 edge-midpoint connection ports for a Fabric object.
+ * Returns points in world (canvas) coordinates, accounting for rotation.
+ */
+export function getConnectionPoints(obj: FabricObject): Point[] {
+  const center = obj.getCenterPoint();
+  const w = (obj.width ?? 0) * (obj.scaleX ?? 1);
+  const h = (obj.height ?? 0) * (obj.scaleY ?? 1);
+  const rad = ((obj.angle ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  // Offsets from center: top, right, bottom, left
+  const offsets: Point[] = [
+    { x: 0, y: -h / 2 },
+    { x: w / 2, y: 0 },
+    { x: 0, y: h / 2 },
+    { x: -w / 2, y: 0 },
+  ];
+
+  return offsets.map(({ x, y }) => ({
+    x: center.x + x * cos - y * sin,
+    y: center.y + x * sin + y * cos,
+  }));
+}
+
+/**
+ * Find the nearest pair of connection ports between two Fabric objects.
+ * Returns `{ from, to }` — the closest edge-midpoint on each object.
+ */
+export function getNearestPorts(
+  fromObj: FabricObject,
+  toObj: FabricObject,
+): { from: Point; to: Point } {
+  const fromPorts = getConnectionPoints(fromObj);
+  const toPorts = getConnectionPoints(toObj);
+
+  let bestDist = Infinity;
+  let bestFrom: Point = fromPorts[0] ?? { x: 0, y: 0 };
+  let bestTo: Point = toPorts[0] ?? { x: 0, y: 0 };
+
+  for (const fp of fromPorts) {
+    for (const tp of toPorts) {
+      const dx = tp.x - fp.x;
+      const dy = tp.y - fp.y;
+      const dist = dx * dx + dy * dy; // no need for sqrt — comparing only
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestFrom = fp;
+        bestTo = tp;
+      }
+    }
+  }
+
+  return { from: bestFrom, to: bestTo };
+}
+
+/**
+ * Build a Fabric `Line` for a connector, using stored endpoint coordinates.
+ *
+ * Connector Yjs data stores the computed endpoints:
+ * - `x`, `y`  → from-point
+ * - `width`, `height` → to-point (fields repurposed for connectors)
+ *
+ * The line is non-transformable — its position is derived from connected objects.
+ */
+export function createConnectorLine(data: Connector): Line {
+  const x1 = data.x;
+  const y1 = data.y;
+  const x2 = data.width;
+  const y2 = data.height;
+
+  const line = new Line([x1, y1, x2, y2], {
+    stroke: data.stroke || DEFAULT_CONNECTOR_STROKE,
+    strokeWidth: DEFAULT_CONNECTOR_STROKE_WIDTH,
+    selectable: true,
+    evented: true,
+    lockMovementX: true,
+    lockMovementY: true,
+    lockScalingX: true,
+    lockScalingY: true,
+    lockRotation: true,
+    hasControls: false,
+    hasBorders: true,
+    perPixelTargetFind: true,
+  });
+
+  setBoardId(line, data.id);
+  return line;
+}
+
+/**
+ * Update a Fabric `Line` connector's endpoints in-place.
+ */
+export function updateConnectorLine(
+  line: Line,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  stroke?: string,
+): void {
+  line.set({ x1: fromX, y1: fromY, x2: toX, y2: toY });
+  if (stroke !== undefined) {
+    line.set('stroke', stroke);
+  }
+  line.setCoords();
 }
 
 /** Find a Fabric object on the canvas by its board UUID. */

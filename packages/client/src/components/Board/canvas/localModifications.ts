@@ -1,11 +1,61 @@
-import { Canvas as FabricCanvas, Group, ActiveSelection, Textbox, util } from 'fabric';
+import { Canvas as FabricCanvas, Group, ActiveSelection, Textbox, Line, util } from 'fabric';
 import type { MutableRefObject, RefObject } from 'react';
 import { getObjectSyncThrottle, getAdaptiveThrottleMs, logger } from '@collabboard/shared';
-import type { BoardObject, Frame } from '@collabboard/shared';
+import type { BoardObject, Frame, Connector } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
-import { getBoardId, setBoardId, setFrameContent, createFrameFromData, findByBoardId } from './fabricHelpers.js';
+import { getBoardId, setBoardId, setFrameContent, createFrameFromData, findByBoardId, getNearestPorts, updateConnectorLine } from './fabricHelpers.js';
 
 const log = logger('throttle');
+
+/**
+ * Reposition all Fabric Line connectors attached to a given object.
+ *
+ * When `writeToYjs` is true the updated endpoint coordinates are also
+ * persisted to the Yjs map so remote clients receive the change.
+ * When false, only the local Fabric canvas is updated (used during
+ * object:moving for smooth visual feedback without Yjs traffic).
+ */
+function repositionConnectors(
+  canvas: FabricCanvas,
+  boardRef: RefObject<ReturnType<typeof useBoard>>,
+  objectId: string,
+  writeToYjs: boolean,
+  isLocalUpdateRef?: MutableRefObject<boolean>,
+  localUpdateIdsRef?: MutableRefObject<Set<string>>,
+): void {
+  const allObjects = boardRef.current.getAllObjects();
+
+  for (const obj of allObjects) {
+    if (obj.type !== 'connector') continue;
+    const conn = obj as Connector;
+    if (conn.fromId !== objectId && conn.toId !== objectId) continue;
+
+    const fromFab = findByBoardId(canvas, conn.fromId);
+    const toFab = findByBoardId(canvas, conn.toId);
+    if (!fromFab || !toFab) continue;
+
+    const ports = getNearestPorts(fromFab, toFab);
+
+    // Update Fabric Line directly
+    const lineObj = findByBoardId(canvas, conn.id);
+    if (lineObj && lineObj instanceof Line) {
+      updateConnectorLine(lineObj, ports.from.x, ports.from.y, ports.to.x, ports.to.y);
+    }
+
+    // Persist to Yjs for remote sync
+    if (writeToYjs) {
+      if (localUpdateIdsRef) localUpdateIdsRef.current.add(conn.id);
+      if (isLocalUpdateRef) isLocalUpdateRef.current = true;
+      boardRef.current.updateObject(conn.id, {
+        x: ports.from.x,
+        y: ports.from.y,
+        width: ports.to.x,
+        height: ports.to.y,
+      });
+      if (isLocalUpdateRef) isLocalUpdateRef.current = false;
+    }
+  }
+}
 
 /**
  * Attach object:moving, object:scaling, object:rotating, and object:modified
@@ -85,6 +135,9 @@ export function attachLocalModifications(
       y: obj.top ?? 0,
     });
     isLocalUpdateRef.current = false;
+
+    // Update connected connectors visually (no Yjs write during drag)
+    repositionConnectors(canvas, boardRef, id, false);
   });
 
   const disposeScaling = canvas.on('object:scaling', (opt) => {
@@ -340,6 +393,11 @@ export function attachLocalModifications(
         }
       }
 
+      // Update connected connectors for all modified objects
+      for (const { id: updateId } of updates) {
+        repositionConnectors(canvas, boardRef, updateId, true, isLocalUpdateRef, localUpdateIdsRef);
+      }
+
       canvas.renderAll();
       return;
     }
@@ -415,6 +473,10 @@ export function attachLocalModifications(
     }
 
     isLocalUpdateRef.current = false;
+
+    // Update connected connectors with Yjs write for remote sync
+    repositionConnectors(canvas, boardRef, id, true, isLocalUpdateRef, localUpdateIdsRef);
+
     canvas.renderAll();
   });
 

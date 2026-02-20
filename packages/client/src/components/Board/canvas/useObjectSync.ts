@@ -3,9 +3,10 @@ import {
   Canvas as FabricCanvas,
   Rect,
   Textbox,
+  Line,
 } from 'fabric';
 import type * as Y from 'yjs';
-import type { BoardObject, StickyNote, RectangleShape, TextElement, Frame } from '@collabboard/shared';
+import type { BoardObject, StickyNote, RectangleShape, TextElement, Frame, Connector } from '@collabboard/shared';
 import { validateBoardObject } from '@collabboard/shared';
 import {
   getBoardId,
@@ -20,7 +21,10 @@ import {
   getFrameContent,
   setFrameContent,
   createFrameFromData,
+  createConnectorLine,
+  updateConnectorLine,
   findByBoardId,
+  getNearestPorts,
 } from './fabricHelpers.js';
 
 /**
@@ -55,6 +59,30 @@ export function useObjectSync(
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+
+    /**
+     * Reposition all connector Lines on canvas whose fromId or toId matches
+     * the given object ID. Called after a non-connector object is synced so
+     * that remote clients see connectors follow their connected objects.
+     */
+    const refreshConnectorsFor = (objectId: string): void => {
+      objectsMap.forEach((raw, key) => {
+        const obj = validateBoardObject(raw);
+        if (!obj || obj.type !== 'connector') return;
+        const conn = obj as Connector;
+        if (conn.fromId !== objectId && conn.toId !== objectId) return;
+
+        const lineObj = findByBoardId(canvas, key);
+        if (!lineObj || !(lineObj instanceof Line)) return;
+
+        const fromObj = findByBoardId(canvas, conn.fromId);
+        const toObj = findByBoardId(canvas, conn.toId);
+        if (!fromObj || !toObj) return;
+
+        const ports = getNearestPorts(fromObj, toObj);
+        updateConnectorLine(lineObj, ports.from.x, ports.from.y, ports.to.x, ports.to.y);
+      });
+    };
 
     /**
      * Create or update a single Fabric object from a validated {@link BoardObject}.
@@ -136,13 +164,24 @@ export function useObjectSync(
             }
             break;
           }
+          case 'connector': {
+            const connData = data as Connector;
+            if (existing instanceof Line) {
+              updateConnectorLine(existing, connData.x, connData.y, connData.width, connData.height, connData.stroke);
+            }
+            break;
+          }
           // Future object types go here:
           // case 'circle': { ... break; }
           // case 'line': { ... break; }
-          // case 'connector': { ... break; }
           default:
             // Unhandled type — log and skip so we don't crash on unknown data
             console.warn(`[useObjectSync] Unhandled object type for update: "${data.type}"`);
+        }
+        // After updating a non-connector object, reposition any connectors
+        // attached to it so remote clients see connectors follow.
+        if (data.type !== 'connector') {
+          refreshConnectorsFor(id);
         }
         canvas.renderAll();
       } else {
@@ -179,10 +218,33 @@ export function useObjectSync(
             group.setCoords();
             break;
           }
+          case 'connector': {
+            const connData = data as Connector;
+            // If stored endpoints are zero, try to compute from connected objects
+            let x1 = connData.x;
+            let y1 = connData.y;
+            let x2 = connData.width;
+            let y2 = connData.height;
+            if (x1 === 0 && y1 === 0 && x2 === 0 && y2 === 0) {
+              const fromObj = findByBoardId(canvas, connData.fromId);
+              const toObj = findByBoardId(canvas, connData.toId);
+              if (fromObj && toObj) {
+                const ports = getNearestPorts(fromObj, toObj);
+                x1 = ports.from.x;
+                y1 = ports.from.y;
+                x2 = ports.to.x;
+                y2 = ports.to.y;
+              }
+            }
+            const adjusted: Connector = { ...connData, x: x1, y: y1, width: x2, height: y2 };
+            const line = createConnectorLine(adjusted);
+            canvas.add(line);
+            line.setCoords();
+            break;
+          }
           // Future object types go here:
           // case 'circle': { ... break; }
           // case 'line': { ... break; }
-          // case 'connector': { ... break; }
           default:
             console.warn(`[useObjectSync] Unhandled object type for create: "${data.type}"`);
         }

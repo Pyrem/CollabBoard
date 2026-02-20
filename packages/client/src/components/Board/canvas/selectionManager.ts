@@ -1,6 +1,6 @@
 import { Canvas as FabricCanvas, ActiveSelection } from 'fabric';
 import type { RefObject, MutableRefObject } from 'react';
-import type { BoardObject } from '@collabboard/shared';
+import type { BoardObject, Connector } from '@collabboard/shared';
 import { logger } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
 import type { SelectedObject, EditingState } from '../Canvas.js';
@@ -49,6 +49,28 @@ function describeObject(obj: BoardObject): Record<string, unknown> {
       break;
   }
   return base;
+}
+
+/**
+ * Find and delete all connectors that reference any of the given object IDs.
+ * Scans the board for connectors whose `fromId` or `toId` is in `deletedIds`.
+ */
+function cascadeDeleteConnectors(
+  board: ReturnType<typeof useBoard>,
+  deletedIds: Set<string>,
+): void {
+  const connectorIds: string[] = [];
+  for (const obj of board.getAllObjects()) {
+    if (obj.type !== 'connector') continue;
+    const conn = obj as Connector;
+    if (deletedIds.has(conn.fromId) || deletedIds.has(conn.toId)) {
+      connectorIds.push(conn.id);
+    }
+  }
+  if (connectorIds.length > 0) {
+    log.debug('cascade-delete connectors', { count: connectorIds.length, ids: connectorIds });
+    board.batchDeleteObjects(connectorIds);
+  }
 }
 
 /**
@@ -108,6 +130,7 @@ export function attachSelectionManager(
       canvas.discardActiveObject();
       if (ids.length > 0) {
         log.debug('multi-delete', { count: ids.length, objects: details });
+        cascadeDeleteConnectors(boardRef.current, new Set(ids));
         boardRef.current.batchDeleteObjects(ids);
       }
     } else {
@@ -118,6 +141,7 @@ export function attachSelectionManager(
       const detail = data ? describeObject(data) : { id, type: 'unknown' };
       canvas.discardActiveObject();
       log.debug('single-delete', detail);
+      cascadeDeleteConnectors(boardRef.current, new Set([id]));
       boardRef.current.deleteObject(id);
     }
 

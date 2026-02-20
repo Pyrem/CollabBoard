@@ -33,6 +33,11 @@ export const DEFAULT_TEXT_FILL = '#333333';
 export const DEFAULT_TEXT_WIDTH = 200;
 export const DEFAULT_TEXT_HEIGHT = 30;
 
+// Default connector properties
+export const DEFAULT_CONNECTOR_STROKE = '#666666';
+export const DEFAULT_CONNECTOR_STROKE_WIDTH = 2;
+export const CONNECTOR_ARROW_SIZE = 10;
+
 // Default colors for shapes
 export const DEFAULT_FILL = '#4CAF50';
 export const DEFAULT_STROKE = '#000000';
