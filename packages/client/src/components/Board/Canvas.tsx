@@ -6,13 +6,26 @@ import {
   Group,
   type TPointerEvent,
   type TPointerEventInfo,
-  type FabricObject,
 } from 'fabric';
 import type * as Y from 'yjs';
 import type { BoardObject, StickyNote, RectangleShape } from '@collabboard/shared';
 import type { CursorPosition } from '@collabboard/shared';
-import { DEFAULT_FILL, DEFAULT_STROKE, getObjectSyncThrottle, validateBoardObject } from '@collabboard/shared';
+import { DEFAULT_FILL, DEFAULT_STROKE, validateBoardObject } from '@collabboard/shared';
 import type { useBoard } from '../../hooks/useBoard.js';
+import { attachPanZoom } from './canvas/panZoom.js';
+import { attachSelectionManager } from './canvas/selectionManager.js';
+import { attachLocalModifications } from './canvas/localModifications.js';
+import {
+  getBoardId,
+  setBoardId,
+  getStickyContent,
+  setStickyContent,
+  createStickyGroup,
+  createRectFromData,
+  updateRectFromData,
+  findByBoardId,
+} from './canvas/fabricHelpers.js';
+import { TextEditingOverlay } from './canvas/TextEditingOverlay.js';
 
 export interface SelectedObject {
   id: string;
@@ -30,6 +43,16 @@ export interface ViewportState {
   panY: number;
 }
 
+export interface EditingState {
+  id: string;
+  text: string;
+  screenX: number;
+  screenY: number;
+  width: number;
+  height: number;
+  color: string;
+}
+
 interface CanvasProps {
   objectsMap: Y.Map<unknown>;
   board: ReturnType<typeof useBoard>;
@@ -40,132 +63,16 @@ interface CanvasProps {
   onViewportChange: (viewport: ViewportState) => void;
 }
 
-interface EditingState {
-  id: string;
-  text: string;
-  screenX: number;
-  screenY: number;
-  width: number;
-  height: number;
-  color: string;
-}
-
-/**
- * Read the board-object UUID stored on a Fabric object.
- *
- * Fabric has no first-class custom-data API, so the ID is stashed as a
- * dynamic `boardId` property via an `unknown` cast.
- */
-function getBoardId(obj: FabricObject): string | undefined {
-  return (obj as unknown as { boardId?: string }).boardId;
-}
-
-/**
- * Attach a board-object UUID to a Fabric object so it can be looked up
- * later by {@link getBoardId}.
- */
-function setBoardId(obj: FabricObject, id: string): void {
-  (obj as unknown as { boardId: string }).boardId = id;
-}
-
-/**
- * Cache a sticky note's text and color directly on the Fabric Group.
- *
- * Used by {@link syncObjectToCanvas} to detect whether a remote update is
- * position-only (cheap move) vs. content-changed (requires Group recreation).
- */
-function setStickyContent(obj: FabricObject, text: string, color: string): void {
-  const record = obj as unknown as { _stickyText: string; _stickyColor: string };
-  record._stickyText = text;
-  record._stickyColor = color;
-}
-
-/**
- * Retrieve the cached text/color from a Fabric Group set by {@link setStickyContent}.
- * @returns The cached values, or `undefined` if they were never set.
- */
-function getStickyContent(obj: FabricObject): { text: string; color: string } | undefined {
-  const record = obj as unknown as { _stickyText?: string; _stickyColor?: string };
-  if (record._stickyText !== undefined && record._stickyColor !== undefined) {
-    return { text: record._stickyText, color: record._stickyColor };
-  }
-  return undefined;
-}
-
-/**
- * Build a Fabric.js `Group` representing a sticky note.
- *
- * The group contains a colored background `Rect` and a `Textbox` with 10 px
- * padding. Rotation and resize controls are disabled — sticky notes are
- * fixed-size and can only be dragged.
- *
- * @param stickyData - Validated {@link StickyNote} from the Yjs map.
- * @returns A new `Group` positioned at `(stickyData.x, stickyData.y)`.
- *   Caller must call {@link setBoardId} and {@link setStickyContent} on it.
- */
-function createStickyGroup(stickyData: StickyNote): Group {
-  const bg = new Rect({
-    width: stickyData.width,
-    height: stickyData.height,
-    fill: stickyData.color,
-    rx: 4,
-    ry: 4,
-    stroke: null,
-    strokeWidth: 0,
-  });
-
-  const text = new Textbox(stickyData.text || 'Type here...', {
-    fontSize: 16,
-    fill: '#333',
-    width: stickyData.width - 20,
-    textAlign: 'left',
-    splitByGrapheme: true,
-    stroke: null,
-    strokeWidth: 0,
-  });
-
-  const group = new Group([bg, text], {
-    left: stickyData.x,
-    top: stickyData.y,
-    subTargetCheck: false,
-    interactive: false,
-    // Disable rotation and resize — sticky notes are fixed-size
-    lockRotation: true,
-    lockScalingX: true,
-    lockScalingY: true,
-    hasControls: false,
-  });
-
-  // After Group creation, explicitly position sub-objects so that
-  // the bg fills the entire Group and text has consistent padding.
-  // The layout manager may place the Textbox at an unexpected offset
-  // due to text measurement differences in the browser.
-  const halfW = group.width / 2;
-  const halfH = group.height / 2;
-  bg.set({ left: -halfW, top: -halfH, width: group.width, height: group.height });
-  text.set({ left: -halfW + 10, top: -halfH + 10, width: group.width - 20 });
-  group.dirty = true;
-
-  return group;
-}
-
 /**
  * Imperative Fabric.js canvas that stays in sync with a Yjs shared map.
  *
- * Two `useEffect` blocks drive the lifecycle:
- * 1. **Mount effect** — creates the `FabricCanvas`, wires pan/zoom, object
- *    modification handlers, keyboard delete, and window resize.
- * 2. **Sync effect** (depends on `objectsMap`) — performs the initial load of
- *    all Yjs objects onto the canvas and attaches a Yjs observer that applies
- *    remote add/update/delete events.
+ * Mount effect creates the canvas and delegates to submodules:
+ * - panZoom: pan (alt/middle-click) and zoom (scroll wheel)
+ * - selectionManager: selection tracking and keyboard delete
+ * - localModifications: object:moving/scaling/modified -> Yjs
  *
- * Infinite-loop prevention uses three refs:
- * - `isRemoteUpdateRef` — set `true` while applying a remote change to Fabric
- *   so Fabric event handlers don't echo it back to Yjs.
- * - `isLocalUpdateRef` — set `true` while writing a local change to Yjs so
- *   the Yjs observer doesn't re-apply it to Fabric.
- * - `localUpdateIdsRef` — per-object tracking for throttled intermediate
- *   updates (drag/resize) where the flag alone isn't sufficient.
+ * Sync effect (depends on objectsMap) handles Yjs observer + initial load.
+ * This will move to useObjectSync in Story 2.
  */
 export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
@@ -175,13 +82,11 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
   const localUpdateIdsRef = useRef<Set<string>>(new Set());
   const lastObjectSyncRef = useRef<Record<string, number>>({});
 
-  // State for sticky note inline text editing
   const [editingSticky, setEditingSticky] = useState<EditingState | null>(null);
   const editingStickyRef = useRef(editingSticky);
   editingStickyRef.current = editingSticky;
 
-  // Keep refs in sync with latest props to avoid stale closures
-  // without causing effect re-runs
+  // Keep refs in sync with latest props
   const boardRef = useRef(board);
   boardRef.current = board;
   const userCountRef = useRef(userCount);
@@ -208,7 +113,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     });
     fabricRef.current = canvas;
 
-    // Expose a function to get the center of the visible scene area
+    // Expose scene center getter to parent
     onReadyRef.current(() => {
       const zoom = canvas.getZoom();
       const vpt = canvas.viewportTransform;
@@ -221,90 +126,21 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       };
     });
 
-    // Helper: emit current viewport transform to parent
-    const emitViewport = (): void => {
-      const vpt = canvas.viewportTransform;
-      if (!vpt) return;
-      onViewportChangeRef.current({ zoom: canvas.getZoom(), panX: vpt[4], panY: vpt[5] });
-    };
+    // Delegate to submodules
+    const cleanupPanZoom = attachPanZoom(canvas, onCursorMoveRef, onViewportChangeRef);
+    const cleanupSelection = attachSelectionManager(canvas, boardRef, onSelectionChangeRef, editingStickyRef);
+    const cleanupModifications = attachLocalModifications(
+      canvas, boardRef, userCountRef,
+      isRemoteUpdateRef, isLocalUpdateRef, localUpdateIdsRef, lastObjectSyncRef,
+    );
 
-    // Pan/zoom setup
-    let isPanning = false;
-    let lastPosX = 0;
-    let lastPosY = 0;
-
-    canvas.on('mouse:down', (opt: TPointerEventInfo<TPointerEvent>) => {
-      const evt = opt.e as MouseEvent;
-      if (evt.altKey || evt.button === 1) {
-        isPanning = true;
-        lastPosX = evt.clientX;
-        lastPosY = evt.clientY;
-        canvas.selection = false;
-      }
-    });
-
-    canvas.on('mouse:move', (opt: TPointerEventInfo<TPointerEvent>) => {
-      const evt = opt.e as MouseEvent;
-      const pointer = canvas.getScenePoint(evt);
-      onCursorMoveRef.current({ x: pointer.x, y: pointer.y });
-
-      if (isPanning) {
-        const dx = evt.clientX - lastPosX;
-        const dy = evt.clientY - lastPosY;
-        const vpt = canvas.viewportTransform;
-        if (vpt) {
-          vpt[4] += dx;
-          vpt[5] += dy;
-          canvas.setViewportTransform(vpt);
-          emitViewport();
-        }
-        lastPosX = evt.clientX;
-        lastPosY = evt.clientY;
-      }
-    });
-
-    canvas.on('mouse:up', () => {
-      isPanning = false;
-      canvas.selection = true;
-    });
-
-    // Zoom with scroll wheel
-    canvas.on('mouse:wheel', (opt: TPointerEventInfo<WheelEvent>) => {
-      const delta = opt.e.deltaY;
-      let zoom = canvas.getZoom();
-      zoom *= 0.999 ** delta;
-      zoom = Math.min(Math.max(zoom, 0.1), 5);
-      canvas.zoomToPoint(canvas.getScenePoint(opt.e), zoom);
-      emitViewport();
-      opt.e.preventDefault();
-      opt.e.stopPropagation();
-    });
-
-    // Track selection changes for color palette integration
-    const notifySelection = (): void => {
-      const active = canvas.getActiveObject();
-      if (active) {
-        const id = getBoardId(active);
-        if (id) {
-          const data = boardRef.current.getObject(id);
-          onSelectionChangeRef.current(data ? { id, type: data.type } : null);
-          return;
-        }
-      }
-      onSelectionChangeRef.current(null);
-    };
-    canvas.on('selection:created', notifySelection);
-    canvas.on('selection:updated', notifySelection);
-    canvas.on('selection:cleared', notifySelection);
-
-    // Double-click to edit sticky note text via HTML textarea overlay
-    canvas.on('mouse:dblclick', (opt: TPointerEventInfo<TPointerEvent>) => {
+    // Double-click to edit sticky note text — stays here because it sets React state
+    const onDblClick = (opt: TPointerEventInfo<TPointerEvent>): void => {
       const target = opt.target;
       if (!target || !(target instanceof Group)) return;
       const id = getBoardId(target);
       if (!id) return;
 
-      // Calculate screen position for the textarea overlay
       const zoom = canvas.getZoom();
       const vpt = canvas.viewportTransform;
       if (!vpt) return;
@@ -313,13 +149,11 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       const screenWidth = (target.width ?? 200) * zoom;
       const screenHeight = (target.height ?? 200) * zoom;
 
-      // Get current text and color from sub-objects
       const textObj = target.getObjects().find((o) => o instanceof Textbox) as Textbox | undefined;
       const bgObj = target.getObjects().find((o) => o instanceof Rect) as Rect | undefined;
       const currentText = textObj?.text ?? '';
       const stickyColor = (bgObj?.fill as string) ?? '#FFEB3B';
 
-      // Hide the Group so its text doesn't show through the textarea
       target.set('opacity', 0);
       canvas.renderAll();
 
@@ -332,120 +166,8 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
         height: screenHeight,
         color: stickyColor,
       });
-    });
-
-    // Broadcast intermediate position updates during drag (throttled)
-    canvas.on('object:moving', (opt) => {
-      if (isRemoteUpdateRef.current) return;
-      const obj = opt.target;
-      if (!obj) return;
-      const id = getBoardId(obj);
-      if (!id) return;
-
-      const now = Date.now();
-      const lastSync = lastObjectSyncRef.current[id] ?? 0;
-      if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
-      lastObjectSyncRef.current[id] = now;
-
-      localUpdateIdsRef.current.add(id);
-      isLocalUpdateRef.current = true;
-      boardRef.current.updateObject(id, {
-        x: obj.left ?? 0,
-        y: obj.top ?? 0,
-      });
-      isLocalUpdateRef.current = false;
-    });
-
-    // Broadcast intermediate size updates during resize (throttled)
-    canvas.on('object:scaling', (opt) => {
-      if (isRemoteUpdateRef.current) return;
-      const obj = opt.target;
-      if (!obj) return;
-      const id = getBoardId(obj);
-      if (!id) return;
-
-      const now = Date.now();
-      const lastSync = lastObjectSyncRef.current[id] ?? 0;
-      if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
-      lastObjectSyncRef.current[id] = now;
-
-      const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
-      const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
-
-      localUpdateIdsRef.current.add(id);
-      isLocalUpdateRef.current = true;
-      boardRef.current.updateObject(id, {
-        x: obj.left ?? 0,
-        y: obj.top ?? 0,
-        width: actualWidth,
-        height: actualHeight,
-      });
-      isLocalUpdateRef.current = false;
-    });
-
-    // Handle local object modifications -> sync to Yjs (final authoritative update on mouse release)
-    canvas.on('object:modified', (opt) => {
-      if (isRemoteUpdateRef.current) return;
-      const obj = opt.target;
-      if (!obj) return;
-      const id = getBoardId(obj);
-      if (!id) return;
-
-      // Reset throttle so the final update always fires immediately
-      delete lastObjectSyncRef.current[id];
-
-      // Guard: prevent the Yjs observer from re-syncing this object
-      // back to the canvas while we're processing a local edit
-      localUpdateIdsRef.current.add(id);
-      isLocalUpdateRef.current = true;
-
-      if (obj instanceof Group) {
-        // Sticky notes: fixed size, only position changes
-        boardRef.current.updateObject(id, {
-          x: obj.left ?? 0,
-          y: obj.top ?? 0,
-        });
-      } else {
-        // Rectangles: can resize
-        const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
-        const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
-
-        boardRef.current.updateObject(id, {
-          x: obj.left ?? 0,
-          y: obj.top ?? 0,
-          width: actualWidth,
-          height: actualHeight,
-        });
-
-        // Normalize scale back to 1 after saving actual dimensions
-        obj.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
-        obj.setCoords();
-      }
-
-      isLocalUpdateRef.current = false;
-      canvas.renderAll();
-    });
-
-    // Delete selected object with Delete or Backspace key
-    const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      // Don't delete when typing in an input or textarea
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      // Don't delete while editing a sticky note
-      if (editingStickyRef.current) return;
-
-      const active = canvas.getActiveObject();
-      if (!active) return;
-      const id = getBoardId(active);
-      if (!id) return;
-
-      e.preventDefault();
-      canvas.discardActiveObject();
-      boardRef.current.deleteObject(id);
-      onSelectionChangeRef.current(null);
     };
-    window.addEventListener('keydown', handleKeyDown);
+    canvas.on('mouse:dblclick', onDblClick);
 
     // Handle window resize
     const handleResize = (): void => {
@@ -454,7 +176,10 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     window.addEventListener('resize', handleResize);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      cleanupPanZoom();
+      cleanupSelection();
+      cleanupModifications();
+      canvas.off('mouse:dblclick', onDblClick);
       window.removeEventListener('resize', handleResize);
       canvas.dispose();
       fabricRef.current = null;
@@ -463,31 +188,16 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
   }, []);
 
   // Observe Yjs changes and sync to Fabric canvas
+  // (Story 2 will extract this into useObjectSync)
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    const findByBoardId = (id: string): FabricObject | undefined =>
-      canvas.getObjects().find((obj) => getBoardId(obj) === id);
-
-    /**
-     * Create or update a single Fabric object from a validated {@link BoardObject}.
-     *
-     * For sticky notes a position-only change does a lightweight `set`/`setCoords`;
-     * a text or color change recreates the entire `Group` (Fabric limitation).
-     * Rectangles are updated in-place.
-     *
-     * Skipped entirely when the change originated locally (prevents echo loops).
-     *
-     * @param id - Board object UUID (key in the Yjs map).
-     * @param data - Validated board object payload.
-     */
     const syncObjectToCanvas = (id: string, data: BoardObject): void => {
-      // Skip if this change originated from a local handler (flag or per-object tracking)
       if (isLocalUpdateRef.current || localUpdateIdsRef.current.delete(id)) return;
 
       isRemoteUpdateRef.current = true;
-      const existing = findByBoardId(id);
+      const existing = findByBoardId(canvas, id);
 
       if (existing) {
         if (data.type === 'sticky') {
@@ -495,12 +205,9 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
           const prev = getStickyContent(existing);
 
           if (prev && prev.text === stickyData.text && prev.color === stickyData.color) {
-            // Position-only update — lightweight move, no Group recreation
             existing.set({ left: stickyData.x, top: stickyData.y });
             existing.setCoords();
           } else {
-            // Content changed (text or color) — full recreation needed
-            // to work around Fabric.js Group layout manager issues
             const wasActive = canvas.getActiveObject() === existing;
             canvas.remove(existing);
             const group = createStickyGroup(stickyData);
@@ -513,22 +220,10 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
             }
           }
         } else if (data.type === 'rectangle' && existing instanceof Rect) {
-          const rectData = data as RectangleShape;
-          existing.set({
-            left: rectData.x,
-            top: rectData.y,
-            width: rectData.width,
-            height: rectData.height,
-            scaleX: 1,
-            scaleY: 1,
-          });
-          existing.set('fill', rectData.fill || DEFAULT_FILL);
-          existing.set('stroke', rectData.stroke || DEFAULT_STROKE);
-          existing.setCoords();
+          updateRectFromData(existing, data as RectangleShape);
         }
         canvas.renderAll();
       } else {
-        // Create new object on canvas
         if (data.type === 'sticky') {
           const stickyData = data as StickyNote;
           const group = createStickyGroup(stickyData);
@@ -537,24 +232,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
           canvas.add(group);
           group.setCoords();
         } else if (data.type === 'rectangle') {
-          const rectData = data as RectangleShape;
-          const fillColor = rectData.fill || DEFAULT_FILL;
-          const strokeColor = rectData.stroke || DEFAULT_STROKE;
-          const rect = new Rect({
-            left: rectData.x,
-            top: rectData.y,
-            width: rectData.width,
-            height: rectData.height,
-            strokeWidth: 2,
-            // Disable rotation
-            lockRotation: true,
-          });
-          rect.set('fill', fillColor);
-          rect.set('stroke', strokeColor);
-          rect.dirty = true;
-          // Hide the rotation control
-          rect.setControlVisible('mtr', false);
-          setBoardId(rect, id);
+          const rect = createRectFromData(data as RectangleShape);
           canvas.add(rect);
           rect.setCoords();
         }
@@ -563,7 +241,6 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       isRemoteUpdateRef.current = false;
     };
 
-    /** Remove all Fabric objects matching the given board ID (handles duplicates). */
     const removeObjectFromCanvas = (id: string): void => {
       isRemoteUpdateRef.current = true;
       const toRemove = canvas.getObjects().filter((obj) => getBoardId(obj) === id);
@@ -572,7 +249,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       isRemoteUpdateRef.current = false;
     };
 
-    // Initial load — validate and sort by zIndex so objects layer correctly
+    // Initial load
     const objects: Array<[string, BoardObject]> = [];
     objectsMap.forEach((value, key) => {
       const validated = validateBoardObject(value);
@@ -585,7 +262,6 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     objects.sort((a, b) => a[1].zIndex - b[1].zIndex);
     objects.forEach(([key, data]) => syncObjectToCanvas(key, data));
 
-    // Observe Yjs map changes — validate before applying
     const observer = (events: Y.YMapEvent<unknown>): void => {
       events.changes.keys.forEach((change, key) => {
         if (change.action === 'add' || change.action === 'update') {
@@ -616,7 +292,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     if (!editing) return;
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const group = canvas.getObjects().find((obj) => getBoardId(obj) === editing.id);
+    const group = findByBoardId(canvas, editing.id);
     if (group) {
       group.set('opacity', 1);
       canvas.renderAll();
@@ -630,8 +306,6 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       if (!editing) return;
       const finalText = text.trim() || '';
       boardRef.current.updateObject(editing.id, { text: finalText } as Partial<BoardObject>);
-      // Restore opacity before closing — the Yjs update will recreate the Group
-      // with full opacity, but restore just in case timing differs
       restoreEditingGroup();
       setEditingSticky(null);
     },
@@ -642,33 +316,13 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <canvas ref={canvasElRef} style={{ display: 'block' }} />
       {editingSticky && (
-        <textarea
-          style={{
-            position: 'absolute',
-            left: editingSticky.screenX,
-            top: editingSticky.screenY,
-            width: editingSticky.width,
-            height: editingSticky.height,
-            fontSize: 16 * (fabricRef.current?.getZoom() ?? 1),
-            fontFamily: 'sans-serif',
-            color: '#333',
-            backgroundColor: editingSticky.color,
-            border: '2px solid #2196F3',
-            borderRadius: 4,
-            padding: 10,
-            resize: 'none',
-            outline: 'none',
-            zIndex: 200,
-            boxSizing: 'border-box',
-          }}
-          defaultValue={editingSticky.text}
-          autoFocus
-          onBlur={(e) => handleSaveEdit(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              restoreEditingGroup();
-              setEditingSticky(null);
-            }
+        <TextEditingOverlay
+          editing={editingSticky}
+          zoom={fabricRef.current?.getZoom() ?? 1}
+          onSave={handleSaveEdit}
+          onCancel={() => {
+            restoreEditingGroup();
+            setEditingSticky(null);
           }}
         />
       )}
