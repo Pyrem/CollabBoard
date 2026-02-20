@@ -42,6 +42,8 @@ export interface EditingState {
   width: number;
   height: number;
   color: string;
+  /** Rotation angle in degrees, used to CSS-rotate the textarea overlay. */
+  rotation: number;
 }
 
 interface CanvasProps {
@@ -159,6 +161,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
         width: screenWidth,
         height: screenHeight,
         color: stickyColor,
+        rotation: target.angle ?? 0,
       });
     };
     canvas.on('mouse:dblclick', onDblClick);
@@ -197,12 +200,22 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     }
   }, []);
 
-  // Save sticky note text edit and close overlay
+  /**
+   * Save sticky note text edit and close the overlay.
+   *
+   * Clears the editing ID from {@link localUpdateIdsRef} before writing so
+   * that the Yjs observer in {@link useObjectSync} processes the text change
+   * instead of silently skipping it. Without this, a previous drag/rotate
+   * leaves the ID in the set, and the `||` short-circuit in
+   * `syncObjectToCanvas` causes the text update to be swallowed.
+   */
   const handleSaveEdit = useCallback(
     (text: string): void => {
       const editing = editingStickyRef.current;
       if (!editing) return;
       const finalText = text.trim() || '';
+      // Flush stale per-object flag so the Yjs observer sees this write
+      localUpdateIdsRef.current.delete(editing.id);
       boardRef.current.updateObject(editing.id, { text: finalText } as Partial<BoardObject>);
       restoreEditingGroup();
       setEditingSticky(null);
