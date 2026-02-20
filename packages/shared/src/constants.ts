@@ -21,6 +21,12 @@ export const DEFAULT_RECT_HEIGHT = 100;
 export const DEFAULT_CIRCLE_WIDTH = 100;
 export const DEFAULT_CIRCLE_HEIGHT = 100;
 
+// Default text element properties
+export const DEFAULT_TEXT_FONT_SIZE = 20;
+export const DEFAULT_TEXT_FILL = '#333333';
+export const DEFAULT_TEXT_WIDTH = 200;
+export const DEFAULT_TEXT_HEIGHT = 30;
+
 // Default colors for shapes
 export const DEFAULT_FILL = '#4CAF50';
 export const DEFAULT_STROKE = '#000000';

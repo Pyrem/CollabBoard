@@ -88,6 +88,9 @@ export function attachSelectionManager(
     const active = canvas.getActiveObject();
     if (!active) return;
 
+    // Don't delete a text element while it's being edited inline
+    if ('isEditing' in active && (active as unknown as { isEditing: boolean }).isEditing) return;
+
     e.preventDefault();
 
     if (active instanceof ActiveSelection) {

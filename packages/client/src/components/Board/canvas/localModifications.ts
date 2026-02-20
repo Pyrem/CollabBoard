@@ -1,4 +1,4 @@
-import { Canvas as FabricCanvas, Group, ActiveSelection, util } from 'fabric';
+import { Canvas as FabricCanvas, Group, ActiveSelection, Textbox, util } from 'fabric';
 import type { MutableRefObject, RefObject } from 'react';
 import { getObjectSyncThrottle, getAdaptiveThrottleMs, logger } from '@collabboard/shared';
 import type { BoardObject } from '@collabboard/shared';
@@ -345,10 +345,27 @@ export function attachLocalModifications(
     canvas.renderAll();
   });
 
+  // Sync text content to Yjs when the user finishes inline editing a Textbox
+  const disposeTextExited = canvas.on('text:editing:exited', (opt) => {
+    if (isRemoteUpdateRef.current) return;
+    const target = opt.target;
+    if (!target || !(target instanceof Textbox)) return;
+    const id = getBoardId(target);
+    if (!id) return;
+
+    localUpdateIdsRef.current.add(id);
+    isLocalUpdateRef.current = true;
+    boardRef.current.updateObject(id, {
+      text: target.text ?? '',
+    } as Partial<BoardObject>);
+    isLocalUpdateRef.current = false;
+  });
+
   return () => {
     disposeMoving();
     disposeScaling();
     disposeRotating();
     disposeModified();
+    disposeTextExited();
   };
 }

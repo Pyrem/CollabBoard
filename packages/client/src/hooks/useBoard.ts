@@ -5,6 +5,7 @@ import type {
   BoardObject,
   StickyNote,
   RectangleShape,
+  TextElement,
 } from '@collabboard/shared';
 import {
   DEFAULT_STICKY_COLOR,
@@ -14,6 +15,10 @@ import {
   DEFAULT_RECT_HEIGHT,
   DEFAULT_FILL,
   DEFAULT_STROKE,
+  DEFAULT_TEXT_FONT_SIZE,
+  DEFAULT_TEXT_FILL,
+  DEFAULT_TEXT_WIDTH,
+  DEFAULT_TEXT_HEIGHT,
   MAX_OBJECTS_PER_BOARD,
   logger,
 } from '@collabboard/shared';
@@ -23,6 +28,7 @@ const log = logger('batch');
 export interface UseBoardReturn {
   createStickyNote: (x: number, y: number, text?: string, color?: string) => string | null;
   createRectangle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string | null;
+  createText: (x: number, y: number, text?: string, fontSize?: number, fill?: string) => string | null;
   updateObject: (id: string, updates: Partial<BoardObject>) => void;
   deleteObject: (id: string) => void;
   getObject: (id: string) => BoardObject | undefined;
@@ -109,6 +115,36 @@ export function useBoard(
         stroke,
       };
       objectsMap.set(id, rect);
+      return id;
+    },
+    [objectsMap, userId],
+  );
+
+  /**
+   * Create a standalone text element at the given position.
+   * @returns The new object's UUID, or `null` if the map is unavailable or full.
+   */
+  const createText = useCallback(
+    (x: number, y: number, text = 'Type here', fontSize = DEFAULT_TEXT_FONT_SIZE, fill = DEFAULT_TEXT_FILL): string | null => {
+      if (!objectsMap) return null;
+      if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
+      const id = uuidv4();
+      const textElement: TextElement = {
+        id,
+        type: 'text',
+        x,
+        y,
+        width: DEFAULT_TEXT_WIDTH,
+        height: DEFAULT_TEXT_HEIGHT,
+        rotation: 0,
+        zIndex: objectsMap.size,
+        lastModifiedBy: userId,
+        lastModifiedAt: Date.now(),
+        text,
+        fontSize,
+        fill,
+      };
+      objectsMap.set(id, textElement);
       return id;
     },
     [objectsMap, userId],
@@ -252,6 +288,7 @@ export function useBoard(
   return {
     createStickyNote,
     createRectangle,
+    createText,
     updateObject,
     deleteObject,
     getObject,

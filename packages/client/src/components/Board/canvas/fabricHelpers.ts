@@ -5,7 +5,7 @@ import {
   Group,
   type FabricObject,
 } from 'fabric';
-import type { StickyNote, RectangleShape } from '@collabboard/shared';
+import type { StickyNote, RectangleShape, TextElement } from '@collabboard/shared';
 import { DEFAULT_FILL, DEFAULT_STROKE } from '@collabboard/shared';
 
 /**
@@ -159,6 +159,60 @@ export function updateRectFromData(existing: Rect, rectData: RectangleShape): vo
   });
   existing.set('fill', rectData.fill || DEFAULT_FILL);
   existing.set('stroke', rectData.stroke || DEFAULT_STROKE);
+  existing.setCoords();
+}
+
+/**
+ * Create a Fabric `Textbox` from a validated {@link TextElement}.
+ *
+ * Uses Fabric's built-in inline editing — double-click to enter edit mode.
+ * Width controls text wrapping; height is auto-computed from content.
+ * Rotation is enabled via the `mtr` handle.
+ *
+ * The board ID is set automatically via {@link setBoardId}.
+ *
+ * @param textData - Validated text element from the Yjs map.
+ * @returns A positioned `Textbox` ready to be added to the canvas.
+ */
+export function createTextFromData(textData: TextElement): Textbox {
+  const textbox = new Textbox(textData.text || 'Type here', {
+    left: textData.x,
+    top: textData.y,
+    width: textData.width,
+    fontSize: textData.fontSize,
+    fill: textData.fill,
+    angle: textData.rotation,
+    strokeWidth: 0,
+    stroke: null,
+    splitByGrapheme: true,
+  });
+  textbox.dirty = true;
+  setBoardId(textbox, textData.id);
+  return textbox;
+}
+
+/**
+ * Apply position/size/style/rotation and text content changes to an existing
+ * Fabric `Textbox` in-place.
+ *
+ * Resets `scaleX`/`scaleY` to 1 and writes actual width so Fabric's
+ * coordinate cache stays consistent after remote updates. Text content is
+ * only updated if it actually changed, to avoid unnecessary re-renders.
+ */
+export function updateTextFromData(existing: Textbox, textData: TextElement): void {
+  existing.set({
+    left: textData.x,
+    top: textData.y,
+    width: textData.width,
+    fontSize: textData.fontSize,
+    fill: textData.fill,
+    angle: textData.rotation,
+    scaleX: 1,
+    scaleY: 1,
+  });
+  if (existing.text !== textData.text) {
+    existing.set('text', textData.text || 'Type here');
+  }
   existing.setCoords();
 }
 

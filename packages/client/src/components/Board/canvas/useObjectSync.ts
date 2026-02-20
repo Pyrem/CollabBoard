@@ -2,9 +2,10 @@ import { useEffect, type MutableRefObject } from 'react';
 import {
   Canvas as FabricCanvas,
   Rect,
+  Textbox,
 } from 'fabric';
 import type * as Y from 'yjs';
-import type { BoardObject, StickyNote, RectangleShape } from '@collabboard/shared';
+import type { BoardObject, StickyNote, RectangleShape, TextElement } from '@collabboard/shared';
 import { validateBoardObject } from '@collabboard/shared';
 import {
   getBoardId,
@@ -14,6 +15,8 @@ import {
   createStickyGroup,
   createRectFromData,
   updateRectFromData,
+  createTextFromData,
+  updateTextFromData,
   findByBoardId,
 } from './fabricHelpers.js';
 
@@ -96,12 +99,20 @@ export function useObjectSync(
             }
             break;
           }
+          case 'text': {
+            if (existing instanceof Textbox) {
+              // Skip update if the local user is actively editing this text element
+              if (!existing.isEditing) {
+                updateTextFromData(existing, data as TextElement);
+              }
+            }
+            break;
+          }
           // Future object types go here:
           // case 'circle': { ... break; }
           // case 'line': { ... break; }
           // case 'connector': { ... break; }
           // case 'frame': { ... break; }
-          // case 'text': { ... break; }
           default:
             // Unhandled type — log and skip so we don't crash on unknown data
             console.warn(`[useObjectSync] Unhandled object type for update: "${data.type}"`);
@@ -125,12 +136,17 @@ export function useObjectSync(
             rect.setCoords();
             break;
           }
+          case 'text': {
+            const textbox = createTextFromData(data as TextElement);
+            canvas.add(textbox);
+            textbox.setCoords();
+            break;
+          }
           // Future object types go here:
           // case 'circle': { ... break; }
           // case 'line': { ... break; }
           // case 'connector': { ... break; }
           // case 'frame': { ... break; }
-          // case 'text': { ... break; }
           default:
             console.warn(`[useObjectSync] Unhandled object type for create: "${data.type}"`);
         }

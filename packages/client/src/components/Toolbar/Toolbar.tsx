@@ -10,7 +10,9 @@ interface ToolbarProps {
   getSceneCenter: () => { x: number; y: number };
 }
 
-type Tool = 'select' | 'sticky' | 'rectangle';
+type Tool = 'select' | 'sticky' | 'rectangle' | 'text';
+
+const FONT_SIZES = [14, 20, 28, 36, 48] as const;
 
 export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps): React.JSX.Element {
   const [activeTool, setActiveTool] = useState<Tool>('select');
@@ -38,6 +40,14 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
         undefined,
         selectedColor,
       );
+    } else if (tool === 'text') {
+      result = board.createText(
+        center.x - 100,
+        center.y - 15,
+        'Type here',
+        undefined,
+        selectedColor === STICKY_COLORS[0] ? undefined : selectedColor,
+      );
     }
     if (result === null && tool !== 'select') {
       window.alert(`Object limit reached (${String(MAX_OBJECTS_PER_BOARD)}). Delete some objects before creating new ones.`);
@@ -57,6 +67,8 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
       if (selectedObject.type === 'sticky') {
         board.updateObject(selectedObject.id, { color } as Partial<BoardObject>);
       } else if (selectedObject.type === 'rectangle') {
+        board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
+      } else if (selectedObject.type === 'text') {
         board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
       }
     }
@@ -94,6 +106,16 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
       >
         Rect
       </button>
+      <button
+        style={{
+          ...styles.toolBtn,
+          ...(activeTool === 'text' ? styles.active : {}),
+        }}
+        onClick={() => handleToolClick('text')}
+        title="Text (T)"
+      >
+        Text
+      </button>
 
       <div style={styles.separator} />
 
@@ -123,6 +145,24 @@ export function Toolbar({ board, selectedObject, getSceneCenter }: ToolbarProps)
           title={color}
         />
       ))}
+
+      {selectedObject?.type === 'text' && (
+        <>
+          <div style={styles.separator} />
+          {FONT_SIZES.map((size) => (
+            <button
+              key={size}
+              style={styles.fontSizeBtn}
+              onClick={() => {
+                board.updateObject(selectedObject.id, { fontSize: size } as Partial<BoardObject>);
+              }}
+              title={`Font size ${String(size)}`}
+            >
+              {String(size)}
+            </button>
+          ))}
+        </>
+      )}
 
       <div style={styles.separator} />
 
@@ -191,6 +231,16 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(0,0,0,0.15)',
     cursor: 'pointer',
     padding: 0,
+  },
+  fontSizeBtn: {
+    padding: '4px 8px',
+    border: '1px solid #ddd',
+    borderRadius: 6,
+    backgroundColor: '#fff',
+    cursor: 'pointer',
+    fontSize: 11,
+    fontWeight: 500,
+    minWidth: 32,
   },
   objectCount: {
     fontSize: 11,
