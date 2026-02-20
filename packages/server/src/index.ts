@@ -44,7 +44,30 @@ app.use(
 app.use(express.json({ limit: '100kb' }));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  const checks: { sqlite: string; hocuspocus: string } = {
+    sqlite: 'ok',
+    hocuspocus: 'ok',
+  };
+
+  // Verify SQLite is readable
+  try {
+    db.prepare('SELECT count(*) AS cnt FROM documents').get();
+  } catch (err: unknown) {
+    checks.sqlite = err instanceof Error ? err.message : 'unreachable';
+  }
+
+  // Verify Hocuspocus is running
+  const documentCount = hocuspocus.getDocumentsCount();
+  const connectionCount = hocuspocus.getConnectionsCount();
+
+  const healthy = checks.sqlite === 'ok' && checks.hocuspocus === 'ok';
+
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'ok' : 'unhealthy',
+    checks,
+    documentCount,
+    connectionCount,
+  });
 });
 
 app.post('/api/ai-command', createRateLimiter(), authMiddleware, aiCommandHandler(hocuspocus));
