@@ -294,7 +294,7 @@ built-in rotation control handle.
 - [x] Rotation value persists to Yjs and syncs across users
 - [x] Rotated objects render at the correct angle on initial load
 - [ ] Text elements and frames (once implemented) also support rotation
-- [x] Sticky notes remain non-rotatable (locked)
+- [x] Sticky notes support rotation (mtr handle only, resize stays locked)
 - [x] No regressions to move/resize behavior
 
 ### Files affected

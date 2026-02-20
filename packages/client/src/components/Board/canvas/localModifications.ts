@@ -104,10 +104,11 @@ export function attachLocalModifications(
     isLocalUpdateRef.current = true;
 
     if (obj instanceof Group) {
-      // Sticky notes: position only (rotation stays locked on Groups)
+      // Sticky notes: position + rotation (fixed-size, no scale normalisation)
       boardRef.current.updateObject(id, {
         x: obj.left ?? 0,
         y: obj.top ?? 0,
+        rotation: obj.angle ?? 0,
       });
     } else {
       const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);

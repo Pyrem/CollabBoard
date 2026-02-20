@@ -72,8 +72,8 @@ export function useObjectSync(
             const prev = getStickyContent(existing);
 
             if (prev && prev.text === stickyData.text && prev.color === stickyData.color) {
-              // Position-only change — lightweight update
-              existing.set({ left: stickyData.x, top: stickyData.y });
+              // Position/rotation-only change — lightweight update
+              existing.set({ left: stickyData.x, top: stickyData.y, angle: stickyData.rotation });
               existing.setCoords();
             } else {
               // Content changed — must recreate the Group (Fabric limitation)
@@ -96,8 +96,6 @@ export function useObjectSync(
             }
             break;
           }
-          // Note: sticky notes intentionally skip rotation — they use
-          // lockRotation: true and have no angle read/write.
           // Future object types go here:
           // case 'circle': { ... break; }
           // case 'line': { ... break; }

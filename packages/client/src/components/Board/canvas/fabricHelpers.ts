@@ -54,8 +54,8 @@ export function getStickyContent(obj: FabricObject): { text: string; color: stri
  * Build a Fabric.js `Group` representing a sticky note.
  *
  * The group contains a colored background `Rect` and a `Textbox` with 10 px
- * padding. Rotation and resize controls are disabled — sticky notes are
- * fixed-size and can only be dragged.
+ * padding. Scaling controls are disabled — sticky notes are fixed-size — but
+ * the rotation handle (`mtr`) is enabled so users can rotate them.
  *
  * @param stickyData - Validated {@link StickyNote} from the Yjs map.
  * @returns A new `Group` positioned at `(stickyData.x, stickyData.y)`.
@@ -85,13 +85,22 @@ export function createStickyGroup(stickyData: StickyNote): Group {
   const group = new Group([bg, text], {
     left: stickyData.x,
     top: stickyData.y,
+    angle: stickyData.rotation,
     subTargetCheck: false,
     interactive: false,
-    lockRotation: true,
     lockScalingX: true,
     lockScalingY: true,
-    hasControls: false,
   });
+
+  // Show only the rotation handle — hide all resize corners/edges
+  group.setControlVisible('tl', false);
+  group.setControlVisible('tr', false);
+  group.setControlVisible('bl', false);
+  group.setControlVisible('br', false);
+  group.setControlVisible('ml', false);
+  group.setControlVisible('mr', false);
+  group.setControlVisible('mt', false);
+  group.setControlVisible('mb', false);
 
   const halfW = group.width / 2;
   const halfH = group.height / 2;
