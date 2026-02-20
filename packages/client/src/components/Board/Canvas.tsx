@@ -50,7 +50,7 @@ interface CanvasProps {
   objectsMap: Y.Map<unknown>;
   board: ReturnType<typeof useBoard>;
   userCount: number;
-  onCursorMove: (position: CursorPosition) => void;
+  onCursorMove: (position: CursorPosition, heavy?: boolean) => void;
   onSelectionChange: (selected: SelectedObject | null) => void;
   onReady: (getSceneCenter: () => SceneCenter) => void;
   onViewportChange: (viewport: ViewportState) => void;

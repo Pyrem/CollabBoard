@@ -1,5 +1,6 @@
 import {
   Canvas as FabricCanvas,
+  ActiveSelection,
   type TPointerEvent,
   type TPointerEventInfo,
 } from 'fabric';
@@ -13,7 +14,7 @@ import type { ViewportState } from '../Canvas.js';
  */
 export function attachPanZoom(
   canvas: FabricCanvas,
-  onCursorMoveRef: RefObject<(pos: CursorPosition) => void>,
+  onCursorMoveRef: RefObject<(pos: CursorPosition, heavy?: boolean) => void>,
   onViewportChangeRef: RefObject<(vp: ViewportState) => void>,
 ): () => void {
   let isPanning = false;
@@ -39,7 +40,8 @@ export function attachPanZoom(
   const onMouseMove = (opt: TPointerEventInfo<TPointerEvent>): void => {
     const evt = opt.e as MouseEvent;
     const pointer = canvas.getScenePoint(evt);
-    onCursorMoveRef.current({ x: pointer.x, y: pointer.y });
+    const heavy = canvas.getActiveObject() instanceof ActiveSelection;
+    onCursorMoveRef.current({ x: pointer.x, y: pointer.y }, heavy);
 
     if (isPanning) {
       const dx = evt.clientX - lastPosX;

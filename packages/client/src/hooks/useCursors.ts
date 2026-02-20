@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { UserPresence, CursorPosition } from '@collabboard/shared';
-import { CURSOR_THROTTLE_MS, PRESENCE_COLORS, logger } from '@collabboard/shared';
+import { THROTTLE, PRESENCE_COLORS, logger } from '@collabboard/shared';
 
 const log = logger('cursor');
 
 interface UseCursorsReturn {
   remoteCursors: UserPresence[];
-  updateLocalCursor: (position: CursorPosition) => void;
+  updateLocalCursor: (position: CursorPosition, heavy?: boolean) => void;
 }
 
 /**
@@ -27,7 +27,8 @@ interface UseCursorsReturn {
  *   - `remoteCursors` — array of {@link UserPresence} objects for every
  *     other connected client (excludes the local client).
  *   - `updateLocalCursor` — call with a canvas-space `{ x, y }` on
- *     `mouse:move`; throttled to {@link CURSOR_THROTTLE_MS} internally.
+ *     `mouse:move`. Pass `heavy: true` during group operations to use
+ *     the heavier throttle interval ({@link THROTTLE.CURSOR_HEAVY_MS}).
  */
 export function useCursors(
   provider: HocuspocusProvider | null,
@@ -81,11 +82,12 @@ export function useCursors(
   }, [provider, userId, displayName, photoURL]);
 
   const updateLocalCursor = useCallback(
-    (position: CursorPosition): void => {
+    (position: CursorPosition, heavy?: boolean): void => {
       if (!provider) return;
+      const interval = heavy ? THROTTLE.CURSOR_HEAVY_MS : THROTTLE.CURSOR_MS;
       const now = performance.now();
       const elapsed = now - lastUpdateRef.current;
-      if (elapsed < CURSOR_THROTTLE_MS) return;
+      if (elapsed < interval) return;
       lastUpdateRef.current = now;
 
       const awareness = provider.awareness;
@@ -94,7 +96,7 @@ export function useCursors(
       const current = awareness.getLocalState();
       const user = current?.['user'] as UserPresence | undefined;
       if (user) {
-        log.debug('broadcast', { x: position.x, y: position.y, interval: CURSOR_THROTTLE_MS });
+        log.debug('broadcast', { x: position.x, y: position.y, heavy: !!heavy, interval });
         awareness.setLocalStateField('user', { ...user, cursor: position });
       }
     },
