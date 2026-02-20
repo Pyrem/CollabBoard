@@ -193,6 +193,15 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     const canvas = fabricRef.current;
     if (!canvas) return;
 
+    /**
+     * Create or update a single Fabric object from a validated {@link BoardObject}.
+     *
+     * For sticky notes a position-only change does a lightweight `set`/`setCoords`;
+     * a text or color change recreates the entire `Group` (Fabric limitation).
+     * Rectangles are updated in-place via {@link updateRectFromData}.
+     *
+     * Skipped entirely when the change originated locally (prevents echo loops).
+     */
     const syncObjectToCanvas = (id: string, data: BoardObject): void => {
       if (isLocalUpdateRef.current || localUpdateIdsRef.current.delete(id)) return;
 
@@ -241,6 +250,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       isRemoteUpdateRef.current = false;
     };
 
+    /** Remove all Fabric objects matching the given board ID (handles duplicates). */
     const removeObjectFromCanvas = (id: string): void => {
       isRemoteUpdateRef.current = true;
       const toRemove = canvas.getObjects().filter((obj) => getBoardId(obj) === id);

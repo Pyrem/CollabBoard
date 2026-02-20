@@ -8,24 +8,40 @@ import {
 import type { StickyNote, RectangleShape } from '@collabboard/shared';
 import { DEFAULT_FILL, DEFAULT_STROKE } from '@collabboard/shared';
 
-/** Read the board-object UUID stored on a Fabric object. */
+/**
+ * Read the board-object UUID stored on a Fabric object.
+ *
+ * Fabric has no first-class custom-data API, so the ID is stashed as a
+ * dynamic `boardId` property via an `unknown` cast.
+ */
 export function getBoardId(obj: FabricObject): string | undefined {
   return (obj as unknown as { boardId?: string }).boardId;
 }
 
-/** Attach a board-object UUID to a Fabric object. */
+/**
+ * Attach a board-object UUID to a Fabric object so it can be looked up
+ * later by {@link getBoardId}.
+ */
 export function setBoardId(obj: FabricObject, id: string): void {
   (obj as unknown as { boardId: string }).boardId = id;
 }
 
-/** Cache a sticky note's text and color directly on the Fabric Group. */
+/**
+ * Cache a sticky note's text and color directly on the Fabric Group.
+ *
+ * Used by the sync layer to detect whether a remote update is
+ * position-only (cheap move) vs. content-changed (requires Group recreation).
+ */
 export function setStickyContent(obj: FabricObject, text: string, color: string): void {
   const record = obj as unknown as { _stickyText: string; _stickyColor: string };
   record._stickyText = text;
   record._stickyColor = color;
 }
 
-/** Retrieve the cached text/color from a Fabric Group. */
+/**
+ * Retrieve the cached text/color from a Fabric Group set by {@link setStickyContent}.
+ * @returns The cached values, or `undefined` if they were never set.
+ */
 export function getStickyContent(obj: FabricObject): { text: string; color: string } | undefined {
   const record = obj as unknown as { _stickyText?: string; _stickyColor?: string };
   if (record._stickyText !== undefined && record._stickyColor !== undefined) {
@@ -34,7 +50,17 @@ export function getStickyContent(obj: FabricObject): { text: string; color: stri
   return undefined;
 }
 
-/** Build a Fabric.js Group representing a sticky note. */
+/**
+ * Build a Fabric.js `Group` representing a sticky note.
+ *
+ * The group contains a colored background `Rect` and a `Textbox` with 10 px
+ * padding. Rotation and resize controls are disabled — sticky notes are
+ * fixed-size and can only be dragged.
+ *
+ * @param stickyData - Validated {@link StickyNote} from the Yjs map.
+ * @returns A new `Group` positioned at `(stickyData.x, stickyData.y)`.
+ *   Caller must call {@link setBoardId} and {@link setStickyContent} on it.
+ */
 export function createStickyGroup(stickyData: StickyNote): Group {
   const bg = new Rect({
     width: stickyData.width,
@@ -76,7 +102,15 @@ export function createStickyGroup(stickyData: StickyNote): Group {
   return group;
 }
 
-/** Create a Fabric Rect from a validated RectangleShape. */
+/**
+ * Create a Fabric `Rect` from a validated {@link RectangleShape}.
+ *
+ * Rotation is disabled (Story 6 will unlock it). The board ID is set
+ * automatically via {@link setBoardId} — no caller action needed.
+ *
+ * @param rectData - Validated rectangle from the Yjs map.
+ * @returns A positioned `Rect` ready to be added to the canvas.
+ */
 export function createRectFromData(rectData: RectangleShape): Rect {
   const rect = new Rect({
     left: rectData.x,
@@ -94,7 +128,12 @@ export function createRectFromData(rectData: RectangleShape): Rect {
   return rect;
 }
 
-/** Apply position/size/style changes to an existing Fabric Rect in-place. */
+/**
+ * Apply position/size/style changes to an existing Fabric `Rect` in-place.
+ *
+ * Resets `scaleX`/`scaleY` to 1 and writes actual dimensions so Fabric's
+ * coordinate cache stays consistent after remote updates.
+ */
 export function updateRectFromData(existing: Rect, rectData: RectangleShape): void {
   existing.set({
     left: rectData.x,
