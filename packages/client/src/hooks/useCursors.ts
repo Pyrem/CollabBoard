@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { UserPresence, CursorPosition } from '@collabboard/shared';
-import { CURSOR_THROTTLE_MS, PRESENCE_COLORS } from '@collabboard/shared';
+import { CURSOR_THROTTLE_MS, PRESENCE_COLORS, logger } from '@collabboard/shared';
+
+const log = logger('cursor');
 
 interface UseCursorsReturn {
   remoteCursors: UserPresence[];
@@ -77,7 +79,8 @@ export function useCursors(
     (position: CursorPosition): void => {
       if (!provider) return;
       const now = performance.now();
-      if (now - lastUpdateRef.current < CURSOR_THROTTLE_MS) return;
+      const elapsed = now - lastUpdateRef.current;
+      if (elapsed < CURSOR_THROTTLE_MS) return;
       lastUpdateRef.current = now;
 
       const awareness = provider.awareness;
@@ -86,6 +89,7 @@ export function useCursors(
       const current = awareness.getLocalState();
       const user = current?.['user'] as UserPresence | undefined;
       if (user) {
+        log.debug('broadcast', { x: position.x, y: position.y, interval: CURSOR_THROTTLE_MS });
         awareness.setLocalStateField('user', { ...user, cursor: position });
       }
     },

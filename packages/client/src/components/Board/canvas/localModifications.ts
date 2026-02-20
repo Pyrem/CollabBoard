@@ -1,8 +1,10 @@
 import { Canvas as FabricCanvas, Group } from 'fabric';
 import type { MutableRefObject, RefObject } from 'react';
-import { getObjectSyncThrottle } from '@collabboard/shared';
+import { getObjectSyncThrottle, logger } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
 import { getBoardId } from './fabricHelpers.js';
+
+const log = logger('throttle');
 
 /**
  * Attach object:moving, object:scaling, object:rotating, and object:modified
@@ -33,9 +35,15 @@ export function attachLocalModifications(
 
     const now = performance.now();
     const lastSync = lastObjectSyncRef.current[id] ?? 0;
-    if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
+    const threshold = getObjectSyncThrottle(userCountRef.current);
+    const elapsed = now - lastSync;
+    if (elapsed < threshold) {
+      log.debug('object:moving skipped', { id, elapsed: Math.round(elapsed), threshold });
+      return;
+    }
     lastObjectSyncRef.current[id] = now;
 
+    log.debug('object:moving synced', { id, x: obj.left ?? 0, y: obj.top ?? 0 });
     localUpdateIdsRef.current.add(id);
     isLocalUpdateRef.current = true;
     boardRef.current.updateObject(id, {
@@ -54,12 +62,18 @@ export function attachLocalModifications(
 
     const now = performance.now();
     const lastSync = lastObjectSyncRef.current[id] ?? 0;
-    if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
+    const threshold = getObjectSyncThrottle(userCountRef.current);
+    const elapsed = now - lastSync;
+    if (elapsed < threshold) {
+      log.debug('object:scaling skipped', { id, elapsed: Math.round(elapsed), threshold });
+      return;
+    }
     lastObjectSyncRef.current[id] = now;
 
     const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
     const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
 
+    log.debug('object:scaling synced', { id, width: Math.round(actualWidth), height: Math.round(actualHeight) });
     localUpdateIdsRef.current.add(id);
     isLocalUpdateRef.current = true;
     boardRef.current.updateObject(id, {
@@ -80,9 +94,15 @@ export function attachLocalModifications(
 
     const now = performance.now();
     const lastSync = lastObjectSyncRef.current[id] ?? 0;
-    if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
+    const threshold = getObjectSyncThrottle(userCountRef.current);
+    const elapsed = now - lastSync;
+    if (elapsed < threshold) {
+      log.debug('object:rotating skipped', { id, elapsed: Math.round(elapsed), threshold });
+      return;
+    }
     lastObjectSyncRef.current[id] = now;
 
+    log.debug('object:rotating synced', { id, angle: Math.round(obj.angle ?? 0) });
     localUpdateIdsRef.current.add(id);
     isLocalUpdateRef.current = true;
     boardRef.current.updateObject(id, {
@@ -102,6 +122,14 @@ export function attachLocalModifications(
 
     localUpdateIdsRef.current.add(id);
     isLocalUpdateRef.current = true;
+
+    log.debug('object:modified committed', {
+      id,
+      x: obj.left ?? 0,
+      y: obj.top ?? 0,
+      angle: obj.angle ?? 0,
+      isGroup: obj instanceof Group,
+    });
 
     if (obj instanceof Group) {
       // Sticky notes: position + rotation (fixed-size, no scale normalisation)
