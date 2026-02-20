@@ -127,6 +127,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
   const isLocalUpdateRef = useRef(false);
+  const localUpdateIdsRef = useRef<Set<string>>(new Set());
   const lastObjectSyncRef = useRef<Record<string, number>>({});
 
   // State for sticky note inline text editing
@@ -301,6 +302,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
       lastObjectSyncRef.current[id] = now;
 
+      localUpdateIdsRef.current.add(id);
       isLocalUpdateRef.current = true;
       boardRef.current.updateObject(id, {
         x: obj.left ?? 0,
@@ -325,6 +327,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
       const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
 
+      localUpdateIdsRef.current.add(id);
       isLocalUpdateRef.current = true;
       boardRef.current.updateObject(id, {
         x: obj.left ?? 0,
@@ -348,6 +351,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
 
       // Guard: prevent the Yjs observer from re-syncing this object
       // back to the canvas while we're processing a local edit
+      localUpdateIdsRef.current.add(id);
       isLocalUpdateRef.current = true;
 
       if (obj instanceof Group) {
@@ -422,8 +426,8 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       canvas.getObjects().find((obj) => getBoardId(obj) === id);
 
     const syncObjectToCanvas = (id: string, data: BoardObject): void => {
-      // Skip if this change originated from a local object:modified handler
-      if (isLocalUpdateRef.current) return;
+      // Skip if this change originated from a local handler (flag or per-object tracking)
+      if (isLocalUpdateRef.current || localUpdateIdsRef.current.delete(id)) return;
 
       isRemoteUpdateRef.current = true;
       const existing = findByBoardId(id);
