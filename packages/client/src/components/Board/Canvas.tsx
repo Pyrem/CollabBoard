@@ -359,6 +359,27 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       canvas.renderAll();
     });
 
+    // Delete selected object with Delete or Backspace key
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      // Don't delete when typing in an input or textarea
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      // Don't delete while editing a sticky note
+      if (editingStickyRef.current) return;
+
+      const active = canvas.getActiveObject();
+      if (!active) return;
+      const id = getBoardId(active);
+      if (!id) return;
+
+      e.preventDefault();
+      canvas.discardActiveObject();
+      boardRef.current.deleteObject(id);
+      onSelectionChangeRef.current(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     // Handle window resize
     const handleResize = (): void => {
       canvas.setDimensions({ width: window.innerWidth, height: window.innerHeight });
@@ -366,6 +387,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     window.addEventListener('resize', handleResize);
 
     return () => {
+      window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('resize', handleResize);
       canvas.dispose();
       fabricRef.current = null;
