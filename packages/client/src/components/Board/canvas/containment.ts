@@ -11,15 +11,15 @@ export interface FrameBounds {
 /**
  * Compute axis-aligned bounds for a frame.
  *
- * Frame x/y is the center (Fabric default origin), so we offset by half
- * width/height. Since frames don't rotate, no rotation math is needed.
+ * Frame x/y is the top-left corner (Fabric default originX:'left',
+ * originY:'top'). Since frames don't rotate, no rotation math is needed.
  */
 export function getFrameBounds(frame: Frame): FrameBounds {
   return {
-    left: frame.x - frame.width / 2,
-    top: frame.y - frame.height / 2,
-    right: frame.x + frame.width / 2,
-    bottom: frame.y + frame.height / 2,
+    left: frame.x,
+    top: frame.y,
+    right: frame.x + frame.width,
+    bottom: frame.y + frame.height,
   };
 }
 
@@ -81,7 +81,11 @@ export function findEvictedChildren(
 
   for (const obj of allObjects) {
     if (obj.parentId !== frame.id) continue;
-    if (!isInsideFrame(obj.x, obj.y, bounds)) {
+    // Skip connectors — their width/height fields are repurposed as endpoint coords
+    if (obj.type === 'connector') continue;
+    const centerX = obj.x + obj.width / 2;
+    const centerY = obj.y + obj.height / 2;
+    if (!isInsideFrame(centerX, centerY, bounds)) {
       evicted.push(obj.id);
     }
   }

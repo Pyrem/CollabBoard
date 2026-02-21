@@ -229,8 +229,9 @@ export function attachLocalModifications(
 
     // Non-frame: visual highlight if dragging over a frame
     if (boardData && boardData.type !== 'frame') {
-      const objCenterX = obj.left ?? 0;
-      const objCenterY = obj.top ?? 0;
+      // Compute actual center (left/top is top-left corner in Fabric)
+      const objCenterX = (obj.left ?? 0) + (obj.width ?? 0) / 2;
+      const objCenterY = (obj.top ?? 0) + (obj.height ?? 0) / 2;
       const frames = getAllFrames(boardRef.current.getAllObjects());
       const containingFrame = findContainingFrame(objCenterX, objCenterY, frames);
       if (containingFrame) {
@@ -619,10 +620,11 @@ export function attachLocalModifications(
 
     // Containment check: only non-frame objects can join/leave frames on drop
     const droppedData = boardRef.current.getObject(id);
-    if (droppedData && droppedData.type !== 'frame') {
+    if (droppedData && droppedData.type !== 'frame' && droppedData.type !== 'connector') {
       clearFrameHighlight();
-      const objCenterX = droppedData.x;
-      const objCenterY = droppedData.y;
+      // Compute actual center (x/y is top-left corner in Fabric)
+      const objCenterX = droppedData.x + droppedData.width / 2;
+      const objCenterY = droppedData.y + droppedData.height / 2;
       const frames = getAllFrames(boardRef.current.getAllObjects());
       const containingFrame = findContainingFrame(objCenterX, objCenterY, frames);
       const currentParentId = droppedData.parentId ?? null;
