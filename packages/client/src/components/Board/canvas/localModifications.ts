@@ -527,10 +527,41 @@ export function attachLocalModifications(
       if (boardData?.type === 'frame') {
         const wasResized = Math.abs((obj.scaleX ?? 1) - 1) > 0.001 || Math.abs((obj.scaleY ?? 1) - 1) > 0.001;
 
+        containmentLog.debug('frame modified', {
+          frameId: id,
+          wasResized,
+          fabricObj: {
+            left: obj.left,
+            top: obj.top,
+            width: obj.width,
+            height: obj.height,
+            scaleX: obj.scaleX,
+            scaleY: obj.scaleY,
+          },
+          yjsBefore: {
+            x: boardData.x,
+            y: boardData.y,
+            width: boardData.width,
+            height: boardData.height,
+            childrenIds: (boardData as Frame).childrenIds,
+          },
+        });
+
         if (wasResized) {
           // Frames are resizable — compute actual dimensions from scale
           const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
           const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
+
+          containmentLog.debug('frame resize computed', {
+            frameId: id,
+            objWidth: obj.width,
+            objHeight: obj.height,
+            scaleX: obj.scaleX,
+            scaleY: obj.scaleY,
+            actualWidth,
+            actualHeight,
+            newPos: { x: obj.left ?? 0, y: obj.top ?? 0 },
+          });
 
           boardRef.current.updateObject(id, {
             x: obj.left ?? 0,
@@ -546,6 +577,23 @@ export function attachLocalModifications(
 
           const frameData = boardRef.current.getObject(id);
           if (frameData?.type === 'frame') {
+            containmentLog.debug('frame after Yjs write', {
+              frameId: id,
+              yjsAfter: {
+                x: frameData.x,
+                y: frameData.y,
+                width: frameData.width,
+                height: frameData.height,
+                childrenIds: (frameData as Frame).childrenIds,
+              },
+              bounds: {
+                left: frameData.x,
+                top: frameData.y,
+                right: frameData.x + frameData.width,
+                bottom: frameData.y + frameData.height,
+              },
+            });
+
             canvas.remove(obj);
             const newGroup = createFrameFromData(frameData as Frame);
             setBoardId(newGroup, id);
@@ -555,7 +603,34 @@ export function attachLocalModifications(
             newGroup.setCoords();
 
             // Evict children whose centers are now outside the resized frame
-            const evicted = findEvictedChildren(frameData as Frame, boardRef.current.getAllObjects());
+            const allObjects = boardRef.current.getAllObjects();
+            const children = allObjects.filter((o) => o.parentId === id);
+            containmentLog.debug('eviction check', {
+              frameId: id,
+              frameBounds: {
+                left: frameData.x,
+                top: frameData.y,
+                right: frameData.x + frameData.width,
+                bottom: frameData.y + frameData.height,
+              },
+              children: children.map((c) => ({
+                id: c.id,
+                type: c.type,
+                pos: { x: c.x, y: c.y, w: c.width, h: c.height },
+                center: { x: c.x + c.width / 2, y: c.y + c.height / 2 },
+                insideFrame: (c.x + c.width / 2) >= frameData.x &&
+                  (c.x + c.width / 2) <= frameData.x + frameData.width &&
+                  (c.y + c.height / 2) >= frameData.y &&
+                  (c.y + c.height / 2) <= frameData.y + frameData.height,
+              })),
+            });
+
+            const evicted = findEvictedChildren(frameData as Frame, allObjects);
+            containmentLog.debug('eviction result', {
+              frameId: id,
+              evictedIds: evicted,
+              evictedCount: evicted.length,
+            });
             for (const childId of evicted) {
               localUpdateIdsRef.current.add(childId);
               localUpdateIdsRef.current.add(id);
