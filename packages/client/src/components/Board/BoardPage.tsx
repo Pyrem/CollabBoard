@@ -1,19 +1,28 @@
 import { use, useCallback, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../hooks/useAuth.js';
+import { logOut } from '../../lib/firebase.js';
 import { useYjs } from '../../hooks/useYjs.js';
 import { useBoard } from '../../hooks/useBoard.js';
 import { useCursors } from '../../hooks/useCursors.js';
 import { usePresence } from '../../hooks/usePresence.js';
-import { Canvas, type SelectedObject, type SceneCenter } from './Canvas.js';
+import { useAI } from '../../hooks/useAI.js';
+import { Canvas, type SelectedObject, type SceneCenter, type ViewportState } from './Canvas.js';
 import { Toolbar } from '../Toolbar/Toolbar.js';
 import { CursorOverlay } from '../Cursors/CursorOverlay.js';
 import { PresencePanel } from '../Presence/PresencePanel.js';
+import { AIChat } from '../AIAgent/AIChat.js';
 
 export function BoardPage(): React.JSX.Element {
   const { boardId = 'default' } = useParams<{ boardId: string }>();
   const { user } = use(AuthContext);
+  const navigate = useNavigate();
   const yjs = useYjs(boardId);
+
+  const handleLogout = useCallback(async () => {
+    await logOut();
+    void navigate('/', { replace: true });
+  }, [navigate]);
 
   const userId = user?.uid ?? 'anonymous';
   const displayName = user?.displayName ?? 'Anonymous';
@@ -27,8 +36,11 @@ export function BoardPage(): React.JSX.Element {
     photoURL,
   );
   const onlineUsers = usePresence(yjs?.provider ?? null);
+  const ai = useAI();
 
   const [selectedObject, setSelectedObject] = useState<SelectedObject | null>(null);
+  const [viewport, setViewport] = useState<ViewportState>({ zoom: 1, panX: 0, panY: 0 });
+  const [activeTool, setActiveTool] = useState<string>('select');
   const getSceneCenterRef = useRef<(() => SceneCenter) | null>(null);
 
   const handleSelectionChange = useCallback((selected: SelectedObject | null) => {
@@ -38,6 +50,15 @@ export function BoardPage(): React.JSX.Element {
   const handleCanvasReady = useCallback((getSceneCenter: () => SceneCenter) => {
     getSceneCenterRef.current = getSceneCenter;
   }, []);
+
+  const handleViewportChange = useCallback((vp: ViewportState) => {
+    setViewport(vp);
+  }, []);
+
+  const handleAISend = useCallback((command: string) => {
+    const center = getSceneCenterRef.current?.();
+    void ai.sendCommand(command, boardId, center ?? undefined);
+  }, [ai, boardId]);
 
   if (!yjs) {
     return (
@@ -53,13 +74,20 @@ export function BoardPage(): React.JSX.Element {
         objectsMap={yjs.objectsMap}
         board={board}
         userCount={onlineUsers.length}
+        activeTool={activeTool}
+        onToolChange={setActiveTool}
         onCursorMove={updateLocalCursor}
         onSelectionChange={handleSelectionChange}
         onReady={handleCanvasReady}
+        onViewportChange={handleViewportChange}
       />
-      <CursorOverlay cursors={remoteCursors} />
-      <Toolbar board={board} selectedObject={selectedObject} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
+      <CursorOverlay cursors={remoteCursors} viewport={viewport} />
+      <Toolbar board={board} selectedObject={selectedObject} activeTool={activeTool} onToolChange={setActiveTool} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
       <PresencePanel users={onlineUsers} />
+      <AIChat messages={ai.messages} isLoading={ai.isLoading} onSend={handleAISend} />
+      <button onClick={() => void handleLogout()} style={styles.logoutBtn}>
+        Log out
+      </button>
       {!yjs.connected && (
         <div style={styles.connectionBanner}>Reconnecting...</div>
       )}
@@ -68,6 +96,20 @@ export function BoardPage(): React.JSX.Element {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  logoutBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    padding: '6px 14px',
+    fontSize: 13,
+    fontWeight: 600,
+    border: '1px solid #ddd',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    color: '#333',
+    cursor: 'pointer',
+    zIndex: 100,
+  },
   connectionBanner: {
     position: 'absolute',
     top: 0,

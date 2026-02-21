@@ -6,6 +6,7 @@ import { Server } from '@hocuspocus/server';
 import { Database } from '@hocuspocus/extension-database';
 import { WebSocketServer } from 'ws';
 import { onAuthenticate } from './hocuspocus/onAuthenticate.js';
+import { onChange } from './hocuspocus/onChange.js';
 import { loadDocument, storeDocument, setupDatabase } from './hocuspocus/database.js';
 import { aiCommandHandler } from './ai/handler.js';
 import { authMiddleware } from './middleware/auth.js';
@@ -20,6 +21,7 @@ const db = setupDatabase();
 // Hocuspocus server (no standalone listen — we handle upgrades manually)
 const hocuspocus = Server.configure({
   onAuthenticate,
+  onChange,
   extensions: [
     new Database({
       fetch: async ({ documentName }) => loadDocument(db, documentName),
@@ -39,10 +41,33 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok' });
+  const checks: { sqlite: string; hocuspocus: string } = {
+    sqlite: 'ok',
+    hocuspocus: 'ok',
+  };
+
+  // Verify SQLite is readable
+  try {
+    db.prepare('SELECT count(*) AS cnt FROM documents').get();
+  } catch (err: unknown) {
+    checks.sqlite = err instanceof Error ? err.message : 'unreachable';
+  }
+
+  // Verify Hocuspocus is running
+  const documentCount = hocuspocus.getDocumentsCount();
+  const connectionCount = hocuspocus.getConnectionsCount();
+
+  const healthy = checks.sqlite === 'ok' && checks.hocuspocus === 'ok';
+
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'ok' : 'unhealthy',
+    checks,
+    documentCount,
+    connectionCount,
+  });
 });
 
 app.post('/api/ai-command', createRateLimiter(), authMiddleware, aiCommandHandler(hocuspocus));
@@ -61,5 +86,45 @@ httpServer.on('upgrade', (request, socket, head) => {
 httpServer.listen(PORT, () => {
   console.log(`[SERVER] HTTP + WebSocket running on port ${String(PORT)}`);
 });
+
+// ── Graceful shutdown ────────────────────────────────────────────────
+let shuttingDown = false;
+
+function shutdown(signal: string): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[SERVER] ${signal} received — shutting down`);
+
+  // 1. Stop accepting new connections
+  httpServer.close(() => {
+    console.log('[SERVER] HTTP server closed');
+  });
+  wss.close();
+
+  // 2. Flush Hocuspocus documents to SQLite and disconnect clients
+  hocuspocus
+    .destroy()
+    .then(() => {
+      console.log('[SERVER] Hocuspocus documents flushed');
+    })
+    .catch((err: unknown) => {
+      console.error('[SERVER] Hocuspocus destroy error', err);
+    })
+    .finally(() => {
+      // 3. Close SQLite connection
+      db.close();
+      console.log('[SERVER] Database closed');
+      process.exit(0);
+    });
+
+  // Hard exit if graceful shutdown takes too long
+  setTimeout(() => {
+    console.error('[SERVER] Forced exit after timeout');
+    process.exit(1);
+  }, 10_000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export { hocuspocus, app };

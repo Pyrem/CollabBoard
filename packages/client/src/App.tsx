@@ -3,6 +3,7 @@ import { AuthProvider } from './components/Auth/AuthProvider.js';
 import { AuthGuard } from './components/Auth/AuthGuard.js';
 import { LoginPage } from './components/Auth/LoginPage.js';
 import { BoardPage } from './components/Board/BoardPage.js';
+import { BoardErrorBoundary } from './components/Board/BoardErrorBoundary.js';
 
 export function App(): React.JSX.Element {
   return (
@@ -14,7 +15,9 @@ export function App(): React.JSX.Element {
             path="/board/:boardId"
             element={
               <AuthGuard>
-                <BoardPage />
+                <BoardErrorBoundary>
+                  <BoardPage />
+                </BoardErrorBoundary>
               </AuthGuard>
             }
           />

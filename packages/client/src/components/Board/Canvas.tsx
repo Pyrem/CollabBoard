@@ -6,13 +6,17 @@ import {
   Group,
   type TPointerEvent,
   type TPointerEventInfo,
-  type FabricObject,
 } from 'fabric';
 import type * as Y from 'yjs';
-import type { BoardObject, StickyNote, RectangleShape } from '@collabboard/shared';
+import type { BoardObject } from '@collabboard/shared';
 import type { CursorPosition } from '@collabboard/shared';
-import { DEFAULT_FILL, DEFAULT_STROKE, getObjectSyncThrottle } from '@collabboard/shared';
 import type { useBoard } from '../../hooks/useBoard.js';
+import { attachPanZoom } from './canvas/panZoom.js';
+import { attachSelectionManager } from './canvas/selectionManager.js';
+import { attachLocalModifications } from './canvas/localModifications.js';
+import { getBoardId, findByBoardId, getNearestPorts } from './canvas/fabricHelpers.js';
+import { TextEditingOverlay } from './canvas/TextEditingOverlay.js';
+import { useObjectSync } from './canvas/useObjectSync.js';
 
 export interface SelectedObject {
   id: string;
@@ -24,16 +28,13 @@ export interface SceneCenter {
   y: number;
 }
 
-interface CanvasProps {
-  objectsMap: Y.Map<unknown>;
-  board: ReturnType<typeof useBoard>;
-  userCount: number;
-  onCursorMove: (position: CursorPosition) => void;
-  onSelectionChange: (selected: SelectedObject | null) => void;
-  onReady: (getSceneCenter: () => SceneCenter) => void;
+export interface ViewportState {
+  zoom: number;
+  panX: number;
+  panY: number;
 }
 
-interface EditingState {
+export interface EditingState {
   id: string;
   text: string;
   screenX: number;
@@ -41,104 +42,72 @@ interface EditingState {
   width: number;
   height: number;
   color: string;
+  /** Rotation angle in degrees, used to CSS-rotate the textarea overlay. */
+  rotation: number;
+  /** The board object type being edited (sticky vs frame title). */
+  objectType: 'sticky' | 'frame';
 }
 
-// Helper: get boardId from a Fabric object
-function getBoardId(obj: FabricObject): string | undefined {
-  return (obj as unknown as { boardId?: string }).boardId;
+interface CanvasProps {
+  objectsMap: Y.Map<unknown>;
+  board: ReturnType<typeof useBoard>;
+  userCount: number;
+  activeTool: string;
+  onToolChange: (tool: string) => void;
+  onCursorMove: (position: CursorPosition, heavy?: boolean) => void;
+  onSelectionChange: (selected: SelectedObject | null) => void;
+  onReady: (getSceneCenter: () => SceneCenter) => void;
+  onViewportChange: (viewport: ViewportState) => void;
 }
 
-// Helper: set boardId on a Fabric object
-function setBoardId(obj: FabricObject, id: string): void {
-  (obj as unknown as { boardId: string }).boardId = id;
-}
-
-// Helpers: track sticky note content on the Fabric Group to detect position-only updates
-function setStickyContent(obj: FabricObject, text: string, color: string): void {
-  const record = obj as unknown as { _stickyText: string; _stickyColor: string };
-  record._stickyText = text;
-  record._stickyColor = color;
-}
-
-function getStickyContent(obj: FabricObject): { text: string; color: string } | undefined {
-  const record = obj as unknown as { _stickyText?: string; _stickyColor?: string };
-  if (record._stickyText !== undefined && record._stickyColor !== undefined) {
-    return { text: record._stickyText, color: record._stickyColor };
-  }
-  return undefined;
-}
-
-// Helper: create a sticky note Group from data
-function createStickyGroup(stickyData: StickyNote): Group {
-  const bg = new Rect({
-    width: stickyData.width,
-    height: stickyData.height,
-    fill: stickyData.color,
-    rx: 4,
-    ry: 4,
-    stroke: null,
-    strokeWidth: 0,
-  });
-
-  const text = new Textbox(stickyData.text || 'Type here...', {
-    fontSize: 16,
-    fill: '#333',
-    width: stickyData.width - 20,
-    textAlign: 'left',
-    splitByGrapheme: true,
-    stroke: null,
-    strokeWidth: 0,
-  });
-
-  const group = new Group([bg, text], {
-    left: stickyData.x,
-    top: stickyData.y,
-    subTargetCheck: false,
-    interactive: false,
-    // Disable rotation and resize — sticky notes are fixed-size
-    lockRotation: true,
-    lockScalingX: true,
-    lockScalingY: true,
-    hasControls: false,
-  });
-
-  // After Group creation, explicitly position sub-objects so that
-  // the bg fills the entire Group and text has consistent padding.
-  // The layout manager may place the Textbox at an unexpected offset
-  // due to text measurement differences in the browser.
-  const halfW = group.width / 2;
-  const halfH = group.height / 2;
-  bg.set({ left: -halfW, top: -halfH, width: group.width, height: group.height });
-  text.set({ left: -halfW + 10, top: -halfH + 10, width: group.width - 20 });
-  group.dirty = true;
-
-  return group;
-}
-
-export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelectionChange, onReady }: CanvasProps): React.JSX.Element {
+/**
+ * Imperative Fabric.js canvas orchestrator.
+ *
+ * This component is purely a wiring layer — it owns the refs, creates the
+ * Fabric canvas, and delegates all behavior to focused submodules:
+ *
+ * - {@link attachPanZoom}: pan (alt/middle-click) and zoom (scroll wheel)
+ * - {@link attachSelectionManager}: selection tracking and keyboard delete
+ * - {@link attachLocalModifications}: object:moving/scaling/modified -> Yjs
+ * - {@link useObjectSync}: Yjs observer + initial load -> Fabric
+ *
+ * The only business logic that remains here is the double-click-to-edit
+ * handler for sticky notes, because it sets React state (`editingSticky`).
+ */
+export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
   const isLocalUpdateRef = useRef(false);
+  const localUpdateIdsRef = useRef<Set<string>>(new Set());
   const lastObjectSyncRef = useRef<Record<string, number>>({});
 
-  // State for sticky note inline text editing
   const [editingSticky, setEditingSticky] = useState<EditingState | null>(null);
   const editingStickyRef = useRef(editingSticky);
   editingStickyRef.current = editingSticky;
 
-  // Keep refs in sync with latest props to avoid stale closures
-  // without causing effect re-runs
+  // Connector creation mode: stores the first object ID while waiting for the second click
+  const [pendingConnectorFrom, setPendingConnectorFrom] = useState<string | null>(null);
+
+  // Keep refs in sync with latest props
   const boardRef = useRef(board);
   boardRef.current = board;
   const userCountRef = useRef(userCount);
   userCountRef.current = userCount;
+  const activeToolRef = useRef(activeTool);
+  activeToolRef.current = activeTool;
+  const onToolChangeRef = useRef(onToolChange);
+  onToolChangeRef.current = onToolChange;
   const onCursorMoveRef = useRef(onCursorMove);
   onCursorMoveRef.current = onCursorMove;
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const onViewportChangeRef = useRef(onViewportChange);
+  onViewportChangeRef.current = onViewportChange;
+  const pendingConnectorFromRef = useRef(pendingConnectorFrom);
+  pendingConnectorFromRef.current = pendingConnectorFrom;
 
   // Initialize Fabric.js canvas — runs once on mount
   useEffect(() => {
@@ -153,7 +122,7 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     });
     fabricRef.current = canvas;
 
-    // Expose a function to get the center of the visible scene area
+    // Expose scene center getter to parent
     onReadyRef.current(() => {
       const zoom = canvas.getZoom();
       const vpt = canvas.viewportTransform;
@@ -166,198 +135,123 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
       };
     });
 
-    // Pan/zoom setup
-    let isPanning = false;
-    let lastPosX = 0;
-    let lastPosY = 0;
+    // Delegate to submodules
+    const cleanupPanZoom = attachPanZoom(canvas, onCursorMoveRef, onViewportChangeRef);
+    const cleanupSelection = attachSelectionManager(canvas, boardRef, onSelectionChangeRef, editingStickyRef);
+    const cleanupModifications = attachLocalModifications(
+      canvas, boardRef, userCountRef,
+      isRemoteUpdateRef, isLocalUpdateRef, localUpdateIdsRef, lastObjectSyncRef,
+    );
 
-    canvas.on('mouse:down', (opt: TPointerEventInfo<TPointerEvent>) => {
-      const evt = opt.e as MouseEvent;
-      if (evt.altKey || evt.button === 1) {
-        isPanning = true;
-        lastPosX = evt.clientX;
-        lastPosY = evt.clientY;
-        canvas.selection = false;
-      }
-    });
-
-    canvas.on('mouse:move', (opt: TPointerEventInfo<TPointerEvent>) => {
-      const evt = opt.e as MouseEvent;
-      const pointer = canvas.getScenePoint(evt);
-      onCursorMoveRef.current({ x: pointer.x, y: pointer.y });
-
-      if (isPanning) {
-        const dx = evt.clientX - lastPosX;
-        const dy = evt.clientY - lastPosY;
-        const vpt = canvas.viewportTransform;
-        if (vpt) {
-          vpt[4] += dx;
-          vpt[5] += dy;
-          canvas.setViewportTransform(vpt);
-        }
-        lastPosX = evt.clientX;
-        lastPosY = evt.clientY;
-      }
-    });
-
-    canvas.on('mouse:up', () => {
-      isPanning = false;
-      canvas.selection = true;
-    });
-
-    // Zoom with scroll wheel
-    canvas.on('mouse:wheel', (opt: TPointerEventInfo<WheelEvent>) => {
-      const delta = opt.e.deltaY;
-      let zoom = canvas.getZoom();
-      zoom *= 0.999 ** delta;
-      zoom = Math.min(Math.max(zoom, 0.1), 5);
-      canvas.zoomToPoint(canvas.getScenePoint(opt.e), zoom);
-      opt.e.preventDefault();
-      opt.e.stopPropagation();
-    });
-
-    // Track selection changes for color palette integration
-    const notifySelection = (): void => {
-      const active = canvas.getActiveObject();
-      if (active) {
-        const id = getBoardId(active);
-        if (id) {
-          const data = boardRef.current.getObject(id);
-          onSelectionChangeRef.current(data ? { id, type: data.type } : null);
-          return;
-        }
-      }
-      onSelectionChangeRef.current(null);
-    };
-    canvas.on('selection:created', notifySelection);
-    canvas.on('selection:updated', notifySelection);
-    canvas.on('selection:cleared', notifySelection);
-
-    // Double-click to edit sticky note text via HTML textarea overlay
-    canvas.on('mouse:dblclick', (opt: TPointerEventInfo<TPointerEvent>) => {
+    // Double-click to edit sticky note text or frame title — stays here because it sets React state
+    const onDblClick = (opt: TPointerEventInfo<TPointerEvent>): void => {
       const target = opt.target;
       if (!target || !(target instanceof Group)) return;
       const id = getBoardId(target);
       if (!id) return;
 
-      // Calculate screen position for the textarea overlay
+      const boardData = boardRef.current.getObject(id);
+      const objType = boardData?.type;
+
       const zoom = canvas.getZoom();
       const vpt = canvas.viewportTransform;
       if (!vpt) return;
       const screenX = (target.left ?? 0) * zoom + vpt[4];
       const screenY = (target.top ?? 0) * zoom + vpt[5];
-      const screenWidth = (target.width ?? 200) * zoom;
-      const screenHeight = (target.height ?? 200) * zoom;
 
-      // Get current text and color from sub-objects
-      const textObj = target.getObjects().find((o) => o instanceof Textbox) as Textbox | undefined;
-      const bgObj = target.getObjects().find((o) => o instanceof Rect) as Rect | undefined;
-      const currentText = textObj?.text ?? '';
-      const stickyColor = (bgObj?.fill as string) ?? '#FFEB3B';
+      if (objType === 'frame') {
+        // Frame: edit only the title area (top strip)
+        const screenWidth = (target.width ?? 400) * zoom;
+        const titleHeight = 30 * zoom;
 
-      // Hide the Group so its text doesn't show through the textarea
-      target.set('opacity', 0);
-      canvas.renderAll();
+        const textObj = target.getObjects().find((o) => o instanceof Textbox) as Textbox | undefined;
+        const currentTitle = textObj?.text ?? '';
 
-      setEditingSticky({
-        id,
-        text: currentText === 'Type here...' ? '' : currentText,
-        screenX,
-        screenY,
-        width: screenWidth,
-        height: screenHeight,
-        color: stickyColor,
-      });
-    });
+        target.set('opacity', 0);
+        canvas.renderAll();
 
-    // Broadcast intermediate position updates during drag (throttled)
-    canvas.on('object:moving', (opt) => {
-      if (isRemoteUpdateRef.current) return;
-      const obj = opt.target;
-      if (!obj) return;
-      const id = getBoardId(obj);
-      if (!id) return;
-
-      const now = Date.now();
-      const lastSync = lastObjectSyncRef.current[id] ?? 0;
-      if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
-      lastObjectSyncRef.current[id] = now;
-
-      isLocalUpdateRef.current = true;
-      boardRef.current.updateObject(id, {
-        x: obj.left ?? 0,
-        y: obj.top ?? 0,
-      });
-      isLocalUpdateRef.current = false;
-    });
-
-    // Broadcast intermediate size updates during resize (throttled)
-    canvas.on('object:scaling', (opt) => {
-      if (isRemoteUpdateRef.current) return;
-      const obj = opt.target;
-      if (!obj) return;
-      const id = getBoardId(obj);
-      if (!id) return;
-
-      const now = Date.now();
-      const lastSync = lastObjectSyncRef.current[id] ?? 0;
-      if (now - lastSync < getObjectSyncThrottle(userCountRef.current)) return;
-      lastObjectSyncRef.current[id] = now;
-
-      const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
-      const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
-
-      isLocalUpdateRef.current = true;
-      boardRef.current.updateObject(id, {
-        x: obj.left ?? 0,
-        y: obj.top ?? 0,
-        width: actualWidth,
-        height: actualHeight,
-      });
-      isLocalUpdateRef.current = false;
-    });
-
-    // Handle local object modifications -> sync to Yjs (final authoritative update on mouse release)
-    canvas.on('object:modified', (opt) => {
-      if (isRemoteUpdateRef.current) return;
-      const obj = opt.target;
-      if (!obj) return;
-      const id = getBoardId(obj);
-      if (!id) return;
-
-      // Reset throttle so the final update always fires immediately
-      delete lastObjectSyncRef.current[id];
-
-      // Guard: prevent the Yjs observer from re-syncing this object
-      // back to the canvas while we're processing a local edit
-      isLocalUpdateRef.current = true;
-
-      if (obj instanceof Group) {
-        // Sticky notes: fixed size, only position changes
-        boardRef.current.updateObject(id, {
-          x: obj.left ?? 0,
-          y: obj.top ?? 0,
+        setEditingSticky({
+          id,
+          text: currentTitle === 'Frame' ? '' : currentTitle,
+          screenX,
+          screenY,
+          width: screenWidth,
+          height: titleHeight,
+          color: 'rgba(200, 200, 200, 0.3)',
+          rotation: target.angle ?? 0,
+          objectType: 'frame',
         });
       } else {
-        // Rectangles: can resize
-        const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
-        const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
+        // Sticky note: edit the full area
+        const screenWidth = (target.width ?? 200) * zoom;
+        const screenHeight = (target.height ?? 200) * zoom;
 
-        boardRef.current.updateObject(id, {
-          x: obj.left ?? 0,
-          y: obj.top ?? 0,
-          width: actualWidth,
-          height: actualHeight,
+        const textObj = target.getObjects().find((o) => o instanceof Textbox) as Textbox | undefined;
+        const bgObj = target.getObjects().find((o) => o instanceof Rect) as Rect | undefined;
+        const currentText = textObj?.text ?? '';
+        const stickyColor = (bgObj?.fill as string) ?? '#FFEB3B';
+
+        target.set('opacity', 0);
+        canvas.renderAll();
+
+        setEditingSticky({
+          id,
+          text: currentText === 'Type here...' ? '' : currentText,
+          screenX,
+          screenY,
+          width: screenWidth,
+          height: screenHeight,
+          color: stickyColor,
+          rotation: target.angle ?? 0,
+          objectType: 'sticky',
         });
-
-        // Normalize scale back to 1 after saving actual dimensions
-        obj.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
-        obj.setCoords();
       }
+    };
+    canvas.on('mouse:dblclick', onDblClick);
 
-      isLocalUpdateRef.current = false;
-      canvas.renderAll();
-    });
+    // Connector creation mode: click first object, click second object
+    const onMouseDown = (opt: TPointerEventInfo<TPointerEvent>): void => {
+      if (activeToolRef.current !== 'connector') return;
+      const target = opt.target;
+      if (!target) {
+        // Clicked empty space — cancel pending connector
+        setPendingConnectorFrom(null);
+        return;
+      }
+      const id = getBoardId(target);
+      if (!id) return;
+
+      // Don't allow connecting connectors to themselves
+      const objData = boardRef.current.getObject(id);
+      if (!objData || objData.type === 'connector') return;
+
+      const pendingFrom = pendingConnectorFromRef.current;
+      if (!pendingFrom) {
+        // First click — store the source object
+        setPendingConnectorFrom(id);
+        canvas.discardActiveObject();
+        canvas.renderAll();
+      } else {
+        // Second click — create the connector
+        if (pendingFrom === id) {
+          // Same object — ignore
+          return;
+        }
+        const fromObj = findByBoardId(canvas, pendingFrom);
+        const toObj = findByBoardId(canvas, id);
+        if (fromObj && toObj) {
+          const ports = getNearestPorts(fromObj, toObj);
+          boardRef.current.createConnector(
+            pendingFrom, id,
+            ports.from.x, ports.from.y,
+            ports.to.x, ports.to.y,
+          );
+        }
+        setPendingConnectorFrom(null);
+        onToolChangeRef.current('select');
+      }
+    };
+    canvas.on('mouse:down', onMouseDown);
 
     // Handle window resize
     const handleResize = (): void => {
@@ -366,6 +260,11 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     window.addEventListener('resize', handleResize);
 
     return () => {
+      cleanupPanZoom();
+      cleanupSelection();
+      cleanupModifications();
+      canvas.off('mouse:dblclick', onDblClick);
+      canvas.off('mouse:down', onMouseDown);
       window.removeEventListener('resize', handleResize);
       canvas.dispose();
       fabricRef.current = null;
@@ -373,130 +272,8 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Observe Yjs changes and sync to Fabric canvas
-  useEffect(() => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-
-    const findByBoardId = (id: string): FabricObject | undefined =>
-      canvas.getObjects().find((obj) => getBoardId(obj) === id);
-
-    const syncObjectToCanvas = (id: string, data: BoardObject): void => {
-      // Skip if this change originated from a local object:modified handler
-      if (isLocalUpdateRef.current) return;
-
-      isRemoteUpdateRef.current = true;
-      const existing = findByBoardId(id);
-
-      if (existing) {
-        if (data.type === 'sticky') {
-          const stickyData = data as StickyNote;
-          const prev = getStickyContent(existing);
-
-          if (prev && prev.text === stickyData.text && prev.color === stickyData.color) {
-            // Position-only update — lightweight move, no Group recreation
-            existing.set({ left: stickyData.x, top: stickyData.y });
-            existing.setCoords();
-          } else {
-            // Content changed (text or color) — full recreation needed
-            // to work around Fabric.js Group layout manager issues
-            const wasActive = canvas.getActiveObject() === existing;
-            canvas.remove(existing);
-            const group = createStickyGroup(stickyData);
-            setBoardId(group, id);
-            setStickyContent(group, stickyData.text, stickyData.color);
-            canvas.add(group);
-            group.setCoords();
-            if (wasActive) {
-              canvas.setActiveObject(group);
-            }
-          }
-        } else if (data.type === 'rectangle' && existing instanceof Rect) {
-          const rectData = data as RectangleShape;
-          existing.set({
-            left: rectData.x,
-            top: rectData.y,
-            width: rectData.width,
-            height: rectData.height,
-            scaleX: 1,
-            scaleY: 1,
-          });
-          existing.set('fill', rectData.fill || DEFAULT_FILL);
-          existing.set('stroke', rectData.stroke || DEFAULT_STROKE);
-          existing.setCoords();
-        }
-        canvas.renderAll();
-      } else {
-        // Create new object on canvas
-        if (data.type === 'sticky') {
-          const stickyData = data as StickyNote;
-          const group = createStickyGroup(stickyData);
-          setBoardId(group, id);
-          setStickyContent(group, stickyData.text, stickyData.color);
-          canvas.add(group);
-          group.setCoords();
-        } else if (data.type === 'rectangle') {
-          const rectData = data as RectangleShape;
-          const fillColor = rectData.fill || DEFAULT_FILL;
-          const strokeColor = rectData.stroke || DEFAULT_STROKE;
-          const rect = new Rect({
-            left: rectData.x,
-            top: rectData.y,
-            width: rectData.width,
-            height: rectData.height,
-            strokeWidth: 2,
-            // Disable rotation
-            lockRotation: true,
-          });
-          rect.set('fill', fillColor);
-          rect.set('stroke', strokeColor);
-          rect.dirty = true;
-          // Hide the rotation control
-          rect.setControlVisible('mtr', false);
-          setBoardId(rect, id);
-          canvas.add(rect);
-          rect.setCoords();
-        }
-        canvas.renderAll();
-      }
-      isRemoteUpdateRef.current = false;
-    };
-
-    const removeObjectFromCanvas = (id: string): void => {
-      isRemoteUpdateRef.current = true;
-      const toRemove = canvas.getObjects().filter((obj) => getBoardId(obj) === id);
-      toRemove.forEach((obj) => canvas.remove(obj));
-      canvas.renderAll();
-      isRemoteUpdateRef.current = false;
-    };
-
-    // Initial load — sort by zIndex so objects layer correctly
-    const objects: Array<[string, BoardObject]> = [];
-    objectsMap.forEach((value, key) => {
-      objects.push([key, value as BoardObject]);
-    });
-    objects.sort((a, b) => a[1].zIndex - b[1].zIndex);
-    objects.forEach(([key, data]) => syncObjectToCanvas(key, data));
-
-    // Observe Yjs map changes
-    const observer = (events: Y.YMapEvent<unknown>): void => {
-      events.changes.keys.forEach((change, key) => {
-        if (change.action === 'add' || change.action === 'update') {
-          const data = objectsMap.get(key) as BoardObject | undefined;
-          if (data) syncObjectToCanvas(key, data);
-        } else if (change.action === 'delete') {
-          removeObjectFromCanvas(key);
-        }
-      });
-    };
-
-    objectsMap.observe(observer);
-
-    return () => {
-      objectsMap.unobserve(observer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objectsMap]);
+  // Yjs -> Fabric sync: initial load + live observer
+  useObjectSync(fabricRef, objectsMap, isRemoteUpdateRef, isLocalUpdateRef, localUpdateIdsRef);
 
   // Restore opacity on the Fabric Group being edited
   const restoreEditingGroup = useCallback((): void => {
@@ -504,59 +281,78 @@ export function Canvas({ objectsMap, board, userCount, onCursorMove, onSelection
     if (!editing) return;
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const group = canvas.getObjects().find((obj) => getBoardId(obj) === editing.id);
+    const group = findByBoardId(canvas, editing.id);
     if (group) {
       group.set('opacity', 1);
       canvas.renderAll();
     }
   }, []);
 
-  // Save sticky note text edit and close overlay
+  /**
+   * Save sticky note text edit and close the overlay.
+   *
+   * Clears the editing ID from {@link localUpdateIdsRef} before writing so
+   * that the Yjs observer in {@link useObjectSync} processes the text change
+   * instead of silently skipping it. Without this, a previous drag/rotate
+   * leaves the ID in the set, and the `||` short-circuit in
+   * `syncObjectToCanvas` causes the text update to be swallowed.
+   */
   const handleSaveEdit = useCallback(
     (text: string): void => {
       const editing = editingStickyRef.current;
       if (!editing) return;
       const finalText = text.trim() || '';
-      boardRef.current.updateObject(editing.id, { text: finalText } as Partial<BoardObject>);
-      // Restore opacity before closing — the Yjs update will recreate the Group
-      // with full opacity, but restore just in case timing differs
+      // Flush stale per-object flag so the Yjs observer sees this write
+      localUpdateIdsRef.current.delete(editing.id);
+      if (editing.objectType === 'frame') {
+        boardRef.current.updateObject(editing.id, { title: finalText || 'Frame' } as Partial<BoardObject>);
+      } else {
+        boardRef.current.updateObject(editing.id, { text: finalText } as Partial<BoardObject>);
+      }
       restoreEditingGroup();
       setEditingSticky(null);
     },
     [restoreEditingGroup],
   );
 
+  // Reset pending connector when tool changes away from 'connector'
+  const prevToolRef = useRef(activeTool);
+  if (prevToolRef.current === 'connector' && activeTool !== 'connector' && pendingConnectorFrom !== null) {
+    setPendingConnectorFrom(null);
+  }
+  prevToolRef.current = activeTool;
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <canvas ref={canvasElRef} style={{ display: 'block' }} />
+      {activeTool === 'connector' && (
+        <div style={{
+          position: 'absolute',
+          top: 12,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          color: '#fff',
+          padding: '6px 16px',
+          borderRadius: 8,
+          fontSize: 13,
+          fontWeight: 500,
+          zIndex: 100,
+          pointerEvents: 'none',
+        }}>
+          {pendingConnectorFrom
+            ? 'Click the second object to connect'
+            : 'Click the first object to start a connector'}
+        </div>
+      )}
       {editingSticky && (
-        <textarea
-          style={{
-            position: 'absolute',
-            left: editingSticky.screenX,
-            top: editingSticky.screenY,
-            width: editingSticky.width,
-            height: editingSticky.height,
-            fontSize: 16 * (fabricRef.current?.getZoom() ?? 1),
-            fontFamily: 'sans-serif',
-            color: '#333',
-            backgroundColor: editingSticky.color,
-            border: '2px solid #2196F3',
-            borderRadius: 4,
-            padding: 10,
-            resize: 'none',
-            outline: 'none',
-            zIndex: 200,
-            boxSizing: 'border-box',
-          }}
-          defaultValue={editingSticky.text}
-          autoFocus
-          onBlur={(e) => handleSaveEdit(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              restoreEditingGroup();
-              setEditingSticky(null);
-            }
+        <TextEditingOverlay
+          editing={editingSticky}
+          zoom={fabricRef.current?.getZoom() ?? 1}
+          onSave={handleSaveEdit}
+          onCancel={() => {
+            restoreEditingGroup();
+            setEditingSticky(null);
           }}
         />
       )}

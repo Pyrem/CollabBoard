@@ -1,4 +1,4 @@
-import { useState, use } from 'react';
+import { useState, use, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../../lib/firebase.js';
 import { AuthContext } from '../../hooks/useAuth.js';
@@ -11,9 +11,11 @@ export function LoginPage(): React.JSX.Element {
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (user) {
-    void navigate('/board/default', { replace: true });
-  }
+  useEffect(() => {
+    if (user) {
+      void navigate('/board/default', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleGoogleSignIn = async (): Promise<void> => {
     try {

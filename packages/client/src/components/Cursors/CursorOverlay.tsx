@@ -1,21 +1,25 @@
 import type { UserPresence } from '@collabboard/shared';
+import type { ViewportState } from '../Board/Canvas.js';
 
 interface CursorOverlayProps {
   cursors: UserPresence[];
+  viewport: ViewportState;
 }
 
-export function CursorOverlay({ cursors }: CursorOverlayProps): React.JSX.Element {
+export function CursorOverlay({ cursors, viewport }: CursorOverlayProps): React.JSX.Element {
   return (
     <div style={styles.overlay}>
       {cursors.map((user) => {
         if (!user.cursor) return null;
+        const screenX = user.cursor.x * viewport.zoom + viewport.panX;
+        const screenY = user.cursor.y * viewport.zoom + viewport.panY;
         return (
           <div
             key={user.userId}
             style={{
               ...styles.cursor,
-              left: user.cursor.x,
-              top: user.cursor.y,
+              left: screenX,
+              top: screenY,
             }}
           >
             <svg width="16" height="20" viewBox="0 0 16 20" fill="none">

@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@collabboard/shared": "workspace:*",
     "@hocuspocus/extension-database": "^2.15.0",
     "@hocuspocus/server": "^2.15.0",
@@ -20,6 +21,7 @@
     "express": "^4.21.0",
     "express-rate-limit": "^7.5.0",
     "firebase-admin": "^13.0.0",
+    "uuid": "^11.1.0",
     "ws": "^8.19.0",
     "yjs": "^13.6.0"
   },
@@ -28,6 +30,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^25.2.3",
+    "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
