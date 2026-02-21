@@ -96,7 +96,7 @@ export function useCursors(
       const current = awareness.getLocalState();
       const user = current?.['user'] as UserPresence | undefined;
       if (user) {
-        log.debug('broadcast', { x: position.x, y: position.y, heavy: !!heavy, interval });
+        // log.debug('broadcast', { x: position.x, y: position.y, heavy: !!heavy, interval });
         awareness.setLocalStateField('user', { ...user, cursor: position });
       }
     },
