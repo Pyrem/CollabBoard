@@ -651,17 +651,17 @@ export function attachLocalModifications(
             childrenIds: frame.childrenIds,
           });
 
-          // Build batch: frame position + all children offset by delta
+          // Build batch: frame position + all children from their Fabric positions
           const updates: Array<{ id: string; updates: Partial<BoardObject> }> = [
             { id, updates: { x: obj.left ?? 0, y: obj.top ?? 0 } },
           ];
           for (const childId of frame.childrenIds) {
-            const child = boardRef.current.getObject(childId);
-            if (!child) continue;
+            const childFab = findByBoardId(canvas, childId);
+            if (!childFab) continue;
             localUpdateIdsRef.current.add(childId);
             updates.push({
               id: childId,
-              updates: { x: child.x + deltaX, y: child.y + deltaY },
+              updates: { x: childFab.left ?? 0, y: childFab.top ?? 0 },
             });
           }
           boardRef.current.batchUpdateObjects(updates);
