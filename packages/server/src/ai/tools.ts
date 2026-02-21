@@ -3,15 +3,18 @@ import type Anthropic from '@anthropic-ai/sdk';
 /**
  * Tool definitions for the CollabBoard AI agent.
  *
- * Each tool maps to a board operation the AI can invoke.
+ * Exactly 9 tools matching the minimum spec:
+ *   createStickyNote, createShape, createFrame, createConnector,
+ *   moveObject, resizeObject, updateText, changeColor, getBoardState
+ *
  * The executor in `executor.ts` handles the actual Yjs writes.
  */
 
 export const aiTools: Anthropic.Tool[] = [
   {
-    name: 'get_board_state',
+    name: 'getBoardState',
     description:
-      'Get the current state of all objects on the board. Returns an array of objects with their properties. Use this to understand the current board layout before making changes.',
+      'Get the current state of all objects on the board. Returns an array of objects with their properties (id, type, position, dimensions, colors, text). Use this to understand the board layout before making changes.',
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -19,9 +22,9 @@ export const aiTools: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'create_sticky_note',
+    name: 'createStickyNote',
     description:
-      'Create a sticky note on the board. Sticky notes are colored squares with text inside them.',
+      'Create a sticky note on the board. Sticky notes are colored squares with editable text inside.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -30,45 +33,36 @@ export const aiTools: Anthropic.Tool[] = [
         y: { type: 'number', description: 'Y position on the canvas' },
         color: {
           type: 'string',
-          description: 'Hex color for the sticky note background. Available colors: #FFEB3B (yellow), #FF9800 (orange), #E91E63 (pink), #4CAF50 (green), #2196F3 (blue), #9C27B0 (purple)',
+          description:
+            'Hex color for the sticky note background. Available: #FFEB3B (yellow), #FF9800 (orange), #E91E63 (pink), #4CAF50 (green), #2196F3 (blue), #9C27B0 (purple). Defaults to yellow.',
         },
       },
       required: ['text', 'x', 'y'],
     },
   },
   {
-    name: 'create_rectangle',
-    description: 'Create a rectangle shape on the board.',
+    name: 'createShape',
+    description:
+      'Create a shape on the board. Currently supports rectangle. Use for visual containers, dividers, or decorative elements.',
     input_schema: {
       type: 'object' as const,
       properties: {
+        type: {
+          type: 'string',
+          enum: ['rectangle'],
+          description: 'Shape type. Currently only "rectangle" is supported.',
+        },
         x: { type: 'number', description: 'X position on the canvas' },
         y: { type: 'number', description: 'Y position on the canvas' },
         width: { type: 'number', description: 'Width in pixels (default 150)' },
         height: { type: 'number', description: 'Height in pixels (default 100)' },
-        fill: { type: 'string', description: 'Fill color (hex)' },
-        stroke: { type: 'string', description: 'Stroke/border color (hex)' },
+        color: { type: 'string', description: 'Fill color as hex string (default #4CAF50)' },
       },
-      required: ['x', 'y'],
+      required: ['type', 'x', 'y'],
     },
   },
   {
-    name: 'create_text',
-    description: 'Create a standalone text element on the board.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        text: { type: 'string', description: 'The text content' },
-        x: { type: 'number', description: 'X position on the canvas' },
-        y: { type: 'number', description: 'Y position on the canvas' },
-        fontSize: { type: 'number', description: 'Font size in pixels (default 20)' },
-        fill: { type: 'string', description: 'Text color (hex, default #333333)' },
-      },
-      required: ['text', 'x', 'y'],
-    },
-  },
-  {
-    name: 'create_frame',
+    name: 'createFrame',
     description:
       'Create a frame on the board. Frames are titled rectangular areas used to visually group other objects.',
     input_schema: {
@@ -84,7 +78,7 @@ export const aiTools: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'create_connector',
+    name: 'createConnector',
     description:
       'Create a connector line between two existing objects on the board. Both objects must already exist.',
     input_schema: {
@@ -92,14 +86,18 @@ export const aiTools: Anthropic.Tool[] = [
       properties: {
         fromId: { type: 'string', description: 'ID of the source object' },
         toId: { type: 'string', description: 'ID of the target object' },
-        stroke: { type: 'string', description: 'Line color (hex, default #666666)' },
+        style: {
+          type: 'string',
+          enum: ['straight', 'curved'],
+          description: 'Connector line style (default "straight")',
+        },
       },
       required: ['fromId', 'toId'],
     },
   },
   {
-    name: 'move_object',
-    description: 'Move an existing object to a new position.',
+    name: 'moveObject',
+    description: 'Move an existing object to a new position on the board.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -111,8 +109,8 @@ export const aiTools: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'resize_object',
-    description: 'Resize an existing object.',
+    name: 'resizeObject',
+    description: 'Resize an existing object on the board.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -124,47 +122,29 @@ export const aiTools: Anthropic.Tool[] = [
     },
   },
   {
-    name: 'update_text',
-    description: 'Update the text content of a sticky note or text element.',
+    name: 'updateText',
+    description:
+      'Update the text content of a sticky note, text element, or frame title.',
     input_schema: {
       type: 'object' as const,
       properties: {
         objectId: { type: 'string', description: 'ID of the object to update' },
-        text: { type: 'string', description: 'New text content' },
+        newText: { type: 'string', description: 'New text content' },
       },
-      required: ['objectId', 'text'],
+      required: ['objectId', 'newText'],
     },
   },
   {
-    name: 'change_color',
-    description: 'Change the color of an existing object.',
+    name: 'changeColor',
+    description:
+      'Change the color of an existing object. Sets the fill for shapes, background for sticky notes, or stroke for connectors.',
     input_schema: {
       type: 'object' as const,
       properties: {
         objectId: { type: 'string', description: 'ID of the object to update' },
-        color: { type: 'string', description: 'New color (hex)' },
+        color: { type: 'string', description: 'New color as hex string (e.g. "#FF0000")' },
       },
       required: ['objectId', 'color'],
-    },
-  },
-  {
-    name: 'delete_object',
-    description: 'Delete an object from the board.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        objectId: { type: 'string', description: 'ID of the object to delete' },
-      },
-      required: ['objectId'],
-    },
-  },
-  {
-    name: 'delete_all',
-    description: 'Delete all objects from the board. Use with caution.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-      required: [],
     },
   },
 ];

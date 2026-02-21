@@ -5,21 +5,17 @@
  * Following the project rule: "Never mock Yjs in tests — use real
  * in-memory Y.Doc instances."
  *
- * Covers:
- * - get_board_state
- * - create_sticky_note
- * - create_rectangle
- * - create_text
- * - create_frame
- * - create_connector
- * - move_object
- * - resize_object
- * - update_text
- * - change_color
- * - delete_object (with cascade connector deletion)
- * - delete_all
- * - Unknown tool dispatch
- * - Object limit enforcement
+ * Covers all 9 spec tools:
+ * - getBoardState
+ * - createStickyNote
+ * - createShape (rectangle)
+ * - createFrame
+ * - createConnector
+ * - moveObject
+ * - resizeObject
+ * - updateText
+ * - changeColor
+ * Plus: unknown tool dispatch, object limit enforcement, user stamping
  */
 
 import { describe, expect, it } from 'vitest';
@@ -33,8 +29,6 @@ import {
   DEFAULT_RECT_HEIGHT,
   DEFAULT_FILL,
   DEFAULT_STROKE,
-  DEFAULT_TEXT_FONT_SIZE,
-  DEFAULT_TEXT_FILL,
   DEFAULT_FRAME_WIDTH,
   DEFAULT_FRAME_HEIGHT,
   DEFAULT_FRAME_FILL,
@@ -120,13 +114,13 @@ function makeConnector(overrides: Partial<Connector> & { id: string; fromId: str
 }
 
 // ---------------------------------------------------------------------------
-// get_board_state
+// getBoardState
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - get_board_state', () => {
+describe('getBoardState', () => {
   it('should return empty array when no objects', () => {
     const doc = makeDoc();
-    const result = executeTool('get_board_state', {}, doc, TEST_USER);
+    const result = executeTool('getBoardState', {}, doc, TEST_USER);
 
     expect(result.success).toBe(true);
     expect(result.data).toEqual([]);
@@ -138,7 +132,7 @@ describe('AI Tools - get_board_state', () => {
     seedObject(doc, makeSticky({ id: 'sticky-1', text: 'Hello' }));
     seedObject(doc, makeRect({ id: 'rect-1', x: 100, y: 200 }));
 
-    const result = executeTool('get_board_state', {}, doc, TEST_USER);
+    const result = executeTool('getBoardState', {}, doc, TEST_USER);
 
     expect(result.success).toBe(true);
     const data = result.data as BoardObject[];
@@ -152,7 +146,7 @@ describe('AI Tools - get_board_state', () => {
     // Seed an invalid object directly (missing required fields)
     doc.getMap('objects').set('bad', { id: 'bad', type: 'unknown-garbage' });
 
-    const result = executeTool('get_board_state', {}, doc, TEST_USER);
+    const result = executeTool('getBoardState', {}, doc, TEST_USER);
 
     expect(result.success).toBe(true);
     const data = result.data as BoardObject[];
@@ -161,14 +155,14 @@ describe('AI Tools - get_board_state', () => {
 });
 
 // ---------------------------------------------------------------------------
-// create_sticky_note
+// createStickyNote
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - create_sticky_note', () => {
+describe('createStickyNote', () => {
   it('should create a sticky note with provided parameters', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'create_sticky_note',
+      'createStickyNote',
       { text: 'Hello World', x: 100, y: 200, color: '#FF9800' },
       doc,
       TEST_USER,
@@ -191,7 +185,7 @@ describe('AI Tools - create_sticky_note', () => {
   it('should use default color when none provided', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'create_sticky_note',
+      'createStickyNote',
       { text: 'Note', x: 0, y: 0 },
       doc,
       TEST_USER,
@@ -206,7 +200,7 @@ describe('AI Tools - create_sticky_note', () => {
   it('should use default dimensions', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'create_sticky_note',
+      'createStickyNote',
       { text: 'Note', x: 0, y: 0 },
       doc,
       TEST_USER,
@@ -223,7 +217,7 @@ describe('AI Tools - create_sticky_note', () => {
     seedObject(doc, makeSticky({ id: 'existing' }));
 
     const result = executeTool(
-      'create_sticky_note',
+      'createStickyNote',
       { text: 'Second', x: 0, y: 0 },
       doc,
       TEST_USER,
@@ -236,15 +230,15 @@ describe('AI Tools - create_sticky_note', () => {
 });
 
 // ---------------------------------------------------------------------------
-// create_rectangle
+// createShape
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - create_rectangle', () => {
-  it('should create a rectangle with provided dimensions', () => {
+describe('createShape', () => {
+  it('should create a rectangle with provided dimensions and color', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'create_rectangle',
-      { x: 50, y: 75, width: 300, height: 200, fill: '#FF0000', stroke: '#000' },
+      'createShape',
+      { type: 'rectangle', x: 50, y: 75, width: 300, height: 200, color: '#FF0000' },
       doc,
       TEST_USER,
     );
@@ -258,14 +252,14 @@ describe('AI Tools - create_rectangle', () => {
     expect(created.width).toBe(300);
     expect(created.height).toBe(200);
     expect(created.fill).toBe('#FF0000');
-    expect(created.stroke).toBe('#000');
+    expect(created.stroke).toBe(DEFAULT_STROKE);
   });
 
-  it('should use default dimensions when not specified', () => {
+  it('should use default dimensions and color when not specified', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'create_rectangle',
-      { x: 0, y: 0 },
+      'createShape',
+      { type: 'rectangle', x: 0, y: 0 },
       doc,
       TEST_USER,
     );
@@ -277,56 +271,32 @@ describe('AI Tools - create_rectangle', () => {
     expect(created.fill).toBe(DEFAULT_FILL);
     expect(created.stroke).toBe(DEFAULT_STROKE);
   });
-});
 
-// ---------------------------------------------------------------------------
-// create_text
-// ---------------------------------------------------------------------------
-
-describe('AI Tools - create_text', () => {
-  it('should create a text element with provided content', () => {
+  it('should reject unsupported shape types', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'create_text',
-      { text: 'Hello', x: 10, y: 20, fontSize: 32, fill: '#111' },
+      'createShape',
+      { type: 'circle', x: 0, y: 0 },
       doc,
       TEST_USER,
     );
 
-    expect(result.success).toBe(true);
-    const data = result.data as { id: string };
-    const created = getObject(doc, data.id) as TextElement;
-    expect(created.type).toBe('text');
-    expect(created.text).toBe('Hello');
-    expect(created.fontSize).toBe(32);
-    expect(created.fill).toBe('#111');
-  });
-
-  it('should use default font size and fill', () => {
-    const doc = makeDoc();
-    const result = executeTool(
-      'create_text',
-      { text: 'Default', x: 0, y: 0 },
-      doc,
-      TEST_USER,
-    );
-
-    const data = result.data as { id: string };
-    const created = getObject(doc, data.id) as TextElement;
-    expect(created.fontSize).toBe(DEFAULT_TEXT_FONT_SIZE);
-    expect(created.fill).toBe(DEFAULT_TEXT_FILL);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('Unsupported shape type');
+    expect(result.message).toContain('circle');
+    expect(objectCount(doc)).toBe(0);
   });
 });
 
 // ---------------------------------------------------------------------------
-// create_frame
+// createFrame
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - create_frame', () => {
+describe('createFrame', () => {
   it('should create a frame with title and dimensions', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'create_frame',
+      'createFrame',
       { title: 'Sprint Board', x: 50, y: 50, width: 800, height: 600 },
       doc,
       TEST_USER,
@@ -346,7 +316,7 @@ describe('AI Tools - create_frame', () => {
   it('should use default dimensions when not specified', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'create_frame',
+      'createFrame',
       { title: 'Default', x: 0, y: 0 },
       doc,
       TEST_USER,
@@ -360,18 +330,18 @@ describe('AI Tools - create_frame', () => {
 });
 
 // ---------------------------------------------------------------------------
-// create_connector
+// createConnector
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - create_connector', () => {
+describe('createConnector', () => {
   it('should create a connector between two existing objects', () => {
     const doc = makeDoc();
     seedObject(doc, makeSticky({ id: 'sticky-a' }));
     seedObject(doc, makeRect({ id: 'rect-b' }));
 
     const result = executeTool(
-      'create_connector',
-      { fromId: 'sticky-a', toId: 'rect-b', stroke: '#333' },
+      'createConnector',
+      { fromId: 'sticky-a', toId: 'rect-b' },
       doc,
       TEST_USER,
     );
@@ -382,17 +352,35 @@ describe('AI Tools - create_connector', () => {
     expect(created.type).toBe('connector');
     expect(created.fromId).toBe('sticky-a');
     expect(created.toId).toBe('rect-b');
-    expect(created.stroke).toBe('#333');
+    expect(created.stroke).toBe(DEFAULT_CONNECTOR_STROKE);
     expect(created.style).toBe('straight');
   });
 
-  it('should use default stroke when not specified', () => {
+  it('should respect style parameter', () => {
     const doc = makeDoc();
     seedObject(doc, makeSticky({ id: 'a' }));
     seedObject(doc, makeSticky({ id: 'b' }));
 
     const result = executeTool(
-      'create_connector',
+      'createConnector',
+      { fromId: 'a', toId: 'b', style: 'curved' },
+      doc,
+      TEST_USER,
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as { id: string };
+    const created = getObject(doc, data.id) as Connector;
+    expect(created.style).toBe('curved');
+  });
+
+  it('should default to straight style when not specified', () => {
+    const doc = makeDoc();
+    seedObject(doc, makeSticky({ id: 'a' }));
+    seedObject(doc, makeSticky({ id: 'b' }));
+
+    const result = executeTool(
+      'createConnector',
       { fromId: 'a', toId: 'b' },
       doc,
       TEST_USER,
@@ -400,7 +388,7 @@ describe('AI Tools - create_connector', () => {
 
     const data = result.data as { id: string };
     const created = getObject(doc, data.id) as Connector;
-    expect(created.stroke).toBe(DEFAULT_CONNECTOR_STROKE);
+    expect(created.style).toBe('straight');
   });
 
   it('should fail when source object not found', () => {
@@ -408,7 +396,7 @@ describe('AI Tools - create_connector', () => {
     seedObject(doc, makeSticky({ id: 'exists' }));
 
     const result = executeTool(
-      'create_connector',
+      'createConnector',
       { fromId: 'nonexistent', toId: 'exists' },
       doc,
       TEST_USER,
@@ -424,7 +412,7 @@ describe('AI Tools - create_connector', () => {
     seedObject(doc, makeSticky({ id: 'exists' }));
 
     const result = executeTool(
-      'create_connector',
+      'createConnector',
       { fromId: 'exists', toId: 'nonexistent' },
       doc,
       TEST_USER,
@@ -437,16 +425,16 @@ describe('AI Tools - create_connector', () => {
 });
 
 // ---------------------------------------------------------------------------
-// move_object
+// moveObject
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - move_object', () => {
+describe('moveObject', () => {
   it('should move an existing object to new coordinates', () => {
     const doc = makeDoc();
     seedObject(doc, makeSticky({ id: 'move-me', x: 10, y: 20 }));
 
     const result = executeTool(
-      'move_object',
+      'moveObject',
       { objectId: 'move-me', x: 500, y: 600 },
       doc,
       TEST_USER,
@@ -463,7 +451,7 @@ describe('AI Tools - move_object', () => {
     const doc = makeDoc();
     seedObject(doc, makeSticky({ id: 'move-me', text: 'Keep this', color: '#FF0000' }));
 
-    executeTool('move_object', { objectId: 'move-me', x: 999, y: 999 }, doc, TEST_USER);
+    executeTool('moveObject', { objectId: 'move-me', x: 999, y: 999 }, doc, TEST_USER);
 
     const updated = getObject(doc, 'move-me') as StickyNote;
     expect(updated.text).toBe('Keep this');
@@ -473,7 +461,7 @@ describe('AI Tools - move_object', () => {
   it('should fail when object not found', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'move_object',
+      'moveObject',
       { objectId: 'nonexistent', x: 0, y: 0 },
       doc,
       TEST_USER,
@@ -485,16 +473,16 @@ describe('AI Tools - move_object', () => {
 });
 
 // ---------------------------------------------------------------------------
-// resize_object
+// resizeObject
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - resize_object', () => {
+describe('resizeObject', () => {
   it('should resize an existing object', () => {
     const doc = makeDoc();
     seedObject(doc, makeRect({ id: 'resize-me', width: 100, height: 50 }));
 
     const result = executeTool(
-      'resize_object',
+      'resizeObject',
       { objectId: 'resize-me', width: 400, height: 300 },
       doc,
       TEST_USER,
@@ -509,7 +497,7 @@ describe('AI Tools - resize_object', () => {
   it('should fail when object not found', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'resize_object',
+      'resizeObject',
       { objectId: 'nonexistent', width: 100, height: 100 },
       doc,
       TEST_USER,
@@ -521,17 +509,17 @@ describe('AI Tools - resize_object', () => {
 });
 
 // ---------------------------------------------------------------------------
-// update_text
+// updateText
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - update_text', () => {
+describe('updateText', () => {
   it('should update text on a sticky note', () => {
     const doc = makeDoc();
     seedObject(doc, makeSticky({ id: 'sticky-1', text: 'Old text' }));
 
     const result = executeTool(
-      'update_text',
-      { objectId: 'sticky-1', text: 'New text' },
+      'updateText',
+      { objectId: 'sticky-1', newText: 'New text' },
       doc,
       TEST_USER,
     );
@@ -561,8 +549,8 @@ describe('AI Tools - update_text', () => {
     seedObject(doc, textEl);
 
     const result = executeTool(
-      'update_text',
-      { objectId: 'text-1', text: 'Updated' },
+      'updateText',
+      { objectId: 'text-1', newText: 'Updated' },
       doc,
       TEST_USER,
     );
@@ -591,8 +579,8 @@ describe('AI Tools - update_text', () => {
     seedObject(doc, frame);
 
     const result = executeTool(
-      'update_text',
-      { objectId: 'frame-1', text: 'New Title' },
+      'updateText',
+      { objectId: 'frame-1', newText: 'New Title' },
       doc,
       TEST_USER,
     );
@@ -607,8 +595,8 @@ describe('AI Tools - update_text', () => {
     seedObject(doc, makeRect({ id: 'rect-1' }));
 
     const result = executeTool(
-      'update_text',
-      { objectId: 'rect-1', text: 'Nope' },
+      'updateText',
+      { objectId: 'rect-1', newText: 'Nope' },
       doc,
       TEST_USER,
     );
@@ -620,8 +608,8 @@ describe('AI Tools - update_text', () => {
   it('should fail when object not found', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'update_text',
-      { objectId: 'nonexistent', text: 'Hello' },
+      'updateText',
+      { objectId: 'nonexistent', newText: 'Hello' },
       doc,
       TEST_USER,
     );
@@ -632,16 +620,16 @@ describe('AI Tools - update_text', () => {
 });
 
 // ---------------------------------------------------------------------------
-// change_color
+// changeColor
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - change_color', () => {
+describe('changeColor', () => {
   it('should change color of a sticky note', () => {
     const doc = makeDoc();
     seedObject(doc, makeSticky({ id: 'sticky-1', color: '#FFEB3B' }));
 
     const result = executeTool(
-      'change_color',
+      'changeColor',
       { objectId: 'sticky-1', color: '#E91E63' },
       doc,
       TEST_USER,
@@ -657,7 +645,7 @@ describe('AI Tools - change_color', () => {
     seedObject(doc, makeRect({ id: 'rect-1', fill: '#4CAF50' }));
 
     const result = executeTool(
-      'change_color',
+      'changeColor',
       { objectId: 'rect-1', color: '#FF0000' },
       doc,
       TEST_USER,
@@ -675,7 +663,7 @@ describe('AI Tools - change_color', () => {
     seedObject(doc, makeConnector({ id: 'conn-1', fromId: 'a', toId: 'b', stroke: '#666' }));
 
     const result = executeTool(
-      'change_color',
+      'changeColor',
       { objectId: 'conn-1', color: '#FF0000' },
       doc,
       TEST_USER,
@@ -698,7 +686,7 @@ describe('AI Tools - change_color', () => {
     seedObject(doc, frame);
 
     const result = executeTool(
-      'change_color',
+      'changeColor',
       { objectId: 'frame-1', color: '#FF0000' },
       doc,
       TEST_USER,
@@ -711,7 +699,7 @@ describe('AI Tools - change_color', () => {
   it('should fail when object not found', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'change_color',
+      'changeColor',
       { objectId: 'nonexistent', color: '#000' },
       doc,
       TEST_USER,
@@ -723,117 +711,10 @@ describe('AI Tools - change_color', () => {
 });
 
 // ---------------------------------------------------------------------------
-// delete_object
-// ---------------------------------------------------------------------------
-
-describe('AI Tools - delete_object', () => {
-  it('should delete an existing object', () => {
-    const doc = makeDoc();
-    seedObject(doc, makeSticky({ id: 'delete-me' }));
-    expect(objectCount(doc)).toBe(1);
-
-    const result = executeTool(
-      'delete_object',
-      { objectId: 'delete-me' },
-      doc,
-      TEST_USER,
-    );
-
-    expect(result.success).toBe(true);
-    expect(objectCount(doc)).toBe(0);
-    expect(getObject(doc, 'delete-me')).toBeUndefined();
-  });
-
-  it('should cascade-delete connectors referencing the deleted object', () => {
-    const doc = makeDoc();
-    seedObject(doc, makeSticky({ id: 'a' }));
-    seedObject(doc, makeSticky({ id: 'b' }));
-    seedObject(doc, makeSticky({ id: 'c' }));
-    seedObject(doc, makeConnector({ id: 'conn-ab', fromId: 'a', toId: 'b' }));
-    seedObject(doc, makeConnector({ id: 'conn-ac', fromId: 'a', toId: 'c' }));
-    seedObject(doc, makeConnector({ id: 'conn-bc', fromId: 'b', toId: 'c' }));
-    expect(objectCount(doc)).toBe(6);
-
-    // Delete 'a' — should cascade conn-ab and conn-ac
-    const result = executeTool(
-      'delete_object',
-      { objectId: 'a' },
-      doc,
-      TEST_USER,
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.message).toContain('2 connected connector');
-    expect(objectCount(doc)).toBe(3); // b, c, conn-bc remain
-    expect(getObject(doc, 'a')).toBeUndefined();
-    expect(getObject(doc, 'conn-ab')).toBeUndefined();
-    expect(getObject(doc, 'conn-ac')).toBeUndefined();
-    expect(getObject(doc, 'conn-bc')).toBeDefined();
-  });
-
-  it('should fail when object not found', () => {
-    const doc = makeDoc();
-    const result = executeTool(
-      'delete_object',
-      { objectId: 'nonexistent' },
-      doc,
-      TEST_USER,
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.message).toContain('not found');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// delete_all
-// ---------------------------------------------------------------------------
-
-describe('AI Tools - delete_all', () => {
-  it('should delete all objects from the board', () => {
-    const doc = makeDoc();
-    seedObject(doc, makeSticky({ id: 'a' }));
-    seedObject(doc, makeSticky({ id: 'b' }));
-    seedObject(doc, makeRect({ id: 'c' }));
-    expect(objectCount(doc)).toBe(3);
-
-    const result = executeTool('delete_all', {}, doc, TEST_USER);
-
-    expect(result.success).toBe(true);
-    expect(result.message).toContain('3');
-    expect(objectCount(doc)).toBe(0);
-  });
-
-  it('should succeed on an empty board', () => {
-    const doc = makeDoc();
-    const result = executeTool('delete_all', {}, doc, TEST_USER);
-
-    expect(result.success).toBe(true);
-    expect(result.message).toContain('0');
-  });
-
-  it('should delete all in a single transaction', () => {
-    const doc = makeDoc();
-    seedObject(doc, makeSticky({ id: 'a' }));
-    seedObject(doc, makeSticky({ id: 'b' }));
-    seedObject(doc, makeSticky({ id: 'c' }));
-
-    // Track how many Yjs update events fire
-    let updateCount = 0;
-    doc.on('update', () => { updateCount++; });
-
-    executeTool('delete_all', {}, doc, TEST_USER);
-
-    // A single transact() should produce exactly 1 update event
-    expect(updateCount).toBe(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Unknown tool
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - unknown tool dispatch', () => {
+describe('unknown tool dispatch', () => {
   it('should fail for an unknown tool name', () => {
     const doc = makeDoc();
     const result = executeTool('nonexistent_tool', {}, doc, TEST_USER);
@@ -848,7 +729,7 @@ describe('AI Tools - unknown tool dispatch', () => {
 // Object limit
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - object limit enforcement', () => {
+describe('object limit enforcement', () => {
   it('should reject creation when board is at capacity', () => {
     const doc = makeDoc();
     const objectsMap = doc.getMap('objects');
@@ -860,21 +741,18 @@ describe('AI Tools - object limit enforcement', () => {
     expect(objectCount(doc)).toBe(MAX_OBJECTS_PER_BOARD);
 
     // Try to create one more — each creation tool should fail
-    const stickyResult = executeTool('create_sticky_note', { text: 'Overflow', x: 0, y: 0 }, doc, TEST_USER);
+    const stickyResult = executeTool('createStickyNote', { text: 'Overflow', x: 0, y: 0 }, doc, TEST_USER);
     expect(stickyResult.success).toBe(false);
     expect(stickyResult.message).toContain('limit');
 
-    const rectResult = executeTool('create_rectangle', { x: 0, y: 0 }, doc, TEST_USER);
-    expect(rectResult.success).toBe(false);
+    const shapeResult = executeTool('createShape', { type: 'rectangle', x: 0, y: 0 }, doc, TEST_USER);
+    expect(shapeResult.success).toBe(false);
 
-    const textResult = executeTool('create_text', { text: 'X', x: 0, y: 0 }, doc, TEST_USER);
-    expect(textResult.success).toBe(false);
-
-    const frameResult = executeTool('create_frame', { title: 'F', x: 0, y: 0 }, doc, TEST_USER);
+    const frameResult = executeTool('createFrame', { title: 'F', x: 0, y: 0 }, doc, TEST_USER);
     expect(frameResult.success).toBe(false);
 
     // Connector also requires capacity
-    const connResult = executeTool('create_connector', { fromId: 'fill-0', toId: 'fill-1' }, doc, TEST_USER);
+    const connResult = executeTool('createConnector', { fromId: 'fill-0', toId: 'fill-1' }, doc, TEST_USER);
     expect(connResult.success).toBe(false);
 
     // Count unchanged
@@ -886,11 +764,11 @@ describe('AI Tools - object limit enforcement', () => {
 // lastModifiedBy stamping
 // ---------------------------------------------------------------------------
 
-describe('AI Tools - user stamping', () => {
+describe('user stamping', () => {
   it('should stamp lastModifiedBy on creation', () => {
     const doc = makeDoc();
     const result = executeTool(
-      'create_sticky_note',
+      'createStickyNote',
       { text: 'Stamp test', x: 0, y: 0 },
       doc,
       'ai-user-123',
@@ -905,7 +783,7 @@ describe('AI Tools - user stamping', () => {
     const doc = makeDoc();
     seedObject(doc, makeSticky({ id: 's1', lastModifiedBy: 'original-user' }));
 
-    executeTool('move_object', { objectId: 's1', x: 999, y: 999 }, doc, 'ai-user-456');
+    executeTool('moveObject', { objectId: 's1', x: 999, y: 999 }, doc, 'ai-user-456');
 
     const updated = getObject(doc, 's1') as StickyNote;
     expect(updated.lastModifiedBy).toBe('ai-user-456');

@@ -4,7 +4,6 @@ import type {
   BoardObject,
   StickyNote,
   RectangleShape,
-  TextElement,
   Frame,
   Connector,
 } from '@collabboard/shared';
@@ -16,10 +15,6 @@ import {
   DEFAULT_RECT_HEIGHT,
   DEFAULT_FILL,
   DEFAULT_STROKE,
-  DEFAULT_TEXT_FONT_SIZE,
-  DEFAULT_TEXT_FILL,
-  DEFAULT_TEXT_WIDTH,
-  DEFAULT_TEXT_HEIGHT,
   DEFAULT_FRAME_WIDTH,
   DEFAULT_FRAME_HEIGHT,
   DEFAULT_FRAME_FILL,
@@ -38,13 +33,9 @@ export interface ToolResult {
 /**
  * Execute a single AI tool call against a Yjs document.
  *
- * The executor reads from and writes to `objectsMap` (the `Y.Map('objects')`)
- * directly. Changes propagate to all connected clients via normal Yjs sync.
- *
- * @param toolName - Name of the tool to execute
- * @param input    - Tool input parameters (parsed from Claude's response)
- * @param doc      - The Yjs document for this board
- * @param userId   - The user ID to stamp on created/modified objects
+ * Tool names match the spec exactly (camelCase):
+ *   getBoardState, createStickyNote, createShape, createFrame,
+ *   createConnector, moveObject, resizeObject, updateText, changeColor
  */
 export function executeTool(
   toolName: string,
@@ -55,7 +46,7 @@ export function executeTool(
   const objectsMap = doc.getMap('objects');
 
   switch (toolName) {
-    case 'get_board_state': {
+    case 'getBoardState': {
       const objects: BoardObject[] = [];
       objectsMap.forEach((value) => {
         const validated = validateBoardObject(value);
@@ -68,7 +59,7 @@ export function executeTool(
       };
     }
 
-    case 'create_sticky_note': {
+    case 'createStickyNote': {
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) {
         return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
       }
@@ -91,11 +82,16 @@ export function executeTool(
       return { success: true, message: `Created sticky note "${note.text}" at (${String(note.x)}, ${String(note.y)})`, data: { id } };
     }
 
-    case 'create_rectangle': {
+    case 'createShape': {
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) {
         return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
       }
+      const shapeType = input['type'] as string;
+      if (shapeType !== 'rectangle') {
+        return { success: false, message: `Unsupported shape type: "${shapeType}". Currently only "rectangle" is supported.` };
+      }
       const id = uuidv4();
+      const color = (input['color'] as string | undefined) ?? DEFAULT_FILL;
       const rect: RectangleShape = {
         id,
         type: 'rectangle',
@@ -107,38 +103,14 @@ export function executeTool(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
-        fill: (input['fill'] as string) ?? DEFAULT_FILL,
-        stroke: (input['stroke'] as string) ?? DEFAULT_STROKE,
+        fill: color,
+        stroke: DEFAULT_STROKE,
       };
       objectsMap.set(id, rect);
       return { success: true, message: `Created rectangle at (${String(rect.x)}, ${String(rect.y)})`, data: { id } };
     }
 
-    case 'create_text': {
-      if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) {
-        return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
-      }
-      const id = uuidv4();
-      const textEl: TextElement = {
-        id,
-        type: 'text',
-        x: input['x'] as number,
-        y: input['y'] as number,
-        width: DEFAULT_TEXT_WIDTH,
-        height: DEFAULT_TEXT_HEIGHT,
-        rotation: 0,
-        zIndex: objectsMap.size,
-        lastModifiedBy: userId,
-        lastModifiedAt: Date.now(),
-        text: (input['text'] as string) ?? 'Text',
-        fontSize: (input['fontSize'] as number | undefined) ?? DEFAULT_TEXT_FONT_SIZE,
-        fill: (input['fill'] as string) ?? DEFAULT_TEXT_FILL,
-      };
-      objectsMap.set(id, textEl);
-      return { success: true, message: `Created text "${textEl.text}" at (${String(textEl.x)}, ${String(textEl.y)})`, data: { id } };
-    }
-
-    case 'create_frame': {
+    case 'createFrame': {
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) {
         return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
       }
@@ -161,7 +133,7 @@ export function executeTool(
       return { success: true, message: `Created frame "${frame.title}" at (${String(frame.x)}, ${String(frame.y)})`, data: { id } };
     }
 
-    case 'create_connector': {
+    case 'createConnector': {
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) {
         return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
       }
@@ -174,11 +146,15 @@ export function executeTool(
       if (!fromObj) return { success: false, message: `Source object "${fromId}" not found` };
       if (!toObj) return { success: false, message: `Target object "${toId}" not found` };
 
+      const style = (input['style'] as 'straight' | 'curved' | undefined) ?? 'straight';
+      if (style !== 'straight' && style !== 'curved') {
+        return { success: false, message: `Invalid connector style: "${String(style)}". Must be "straight" or "curved".` };
+      }
+
       const id = uuidv4();
       const connector: Connector = {
         id,
         type: 'connector',
-        // Store zeros — the client computes actual endpoints from object positions
         x: 0,
         y: 0,
         width: 0,
@@ -189,14 +165,14 @@ export function executeTool(
         lastModifiedAt: Date.now(),
         fromId,
         toId,
-        stroke: (input['stroke'] as string) ?? DEFAULT_CONNECTOR_STROKE,
-        style: 'straight',
+        stroke: DEFAULT_CONNECTOR_STROKE,
+        style,
       };
       objectsMap.set(id, connector);
       return { success: true, message: `Created connector from ${fromId} to ${toId}`, data: { id } };
     }
 
-    case 'move_object': {
+    case 'moveObject': {
       const objectId = input['objectId'] as string;
       const existing = objectsMap.get(objectId) as BoardObject | undefined;
       if (!existing) return { success: false, message: `Object "${objectId}" not found` };
@@ -210,7 +186,7 @@ export function executeTool(
       return { success: true, message: `Moved object to (${String(input['x'])}, ${String(input['y'])})` };
     }
 
-    case 'resize_object': {
+    case 'resizeObject': {
       const objectId = input['objectId'] as string;
       const existing = objectsMap.get(objectId) as BoardObject | undefined;
       if (!existing) return { success: false, message: `Object "${objectId}" not found` };
@@ -224,11 +200,11 @@ export function executeTool(
       return { success: true, message: `Resized object to ${String(input['width'])}x${String(input['height'])}` };
     }
 
-    case 'update_text': {
+    case 'updateText': {
       const objectId = input['objectId'] as string;
       const existing = objectsMap.get(objectId) as BoardObject | undefined;
       if (!existing) return { success: false, message: `Object "${objectId}" not found` };
-      const newText = input['text'] as string;
+      const newText = input['newText'] as string;
       if (existing.type === 'sticky') {
         objectsMap.set(objectId, { ...existing, text: newText, lastModifiedBy: userId, lastModifiedAt: Date.now() });
       } else if (existing.type === 'text') {
@@ -241,7 +217,7 @@ export function executeTool(
       return { success: true, message: `Updated text to "${newText}"` };
     }
 
-    case 'change_color': {
+    case 'changeColor': {
       const objectId = input['objectId'] as string;
       const existing = objectsMap.get(objectId) as BoardObject | undefined;
       if (!existing) return { success: false, message: `Object "${objectId}" not found` };
@@ -263,46 +239,6 @@ export function executeTool(
           return { success: false, message: `Cannot change color of ${existing.type}` };
       }
       return { success: true, message: `Changed color to ${color}` };
-    }
-
-    case 'delete_object': {
-      const objectId = input['objectId'] as string;
-      if (!objectsMap.has(objectId)) {
-        return { success: false, message: `Object "${objectId}" not found` };
-      }
-      // Also delete connectors referencing this object
-      const connectorIds: string[] = [];
-      objectsMap.forEach((value, key) => {
-        const obj = validateBoardObject(value);
-        if (obj?.type === 'connector') {
-          const conn = obj as Connector;
-          if (conn.fromId === objectId || conn.toId === objectId) {
-            connectorIds.push(key);
-          }
-        }
-      });
-      doc.transact(() => {
-        objectsMap.delete(objectId);
-        for (const cid of connectorIds) {
-          objectsMap.delete(cid);
-        }
-      });
-      return {
-        success: true,
-        message: connectorIds.length > 0
-          ? `Deleted object and ${String(connectorIds.length)} connected connector(s)`
-          : 'Deleted object',
-      };
-    }
-
-    case 'delete_all': {
-      const keys = Array.from(objectsMap.keys());
-      doc.transact(() => {
-        for (const key of keys) {
-          objectsMap.delete(key);
-        }
-      });
-      return { success: true, message: `Deleted all ${String(keys.length)} objects` };
     }
 
     default:

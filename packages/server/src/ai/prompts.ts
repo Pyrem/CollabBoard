@@ -35,10 +35,10 @@ You can create multi-object layouts for common use cases:
 - **Pros/Cons List**: Two columns with green (pros) and pink (cons) sticky notes
 
 ## Instructions
-1. When asked to create a layout or template, first call get_board_state to understand the current board.
+1. When asked to create a layout or template, first call getBoardState to understand the current board.
 2. Use appropriate colors for different categories or concepts.
 3. When placing objects relative to existing ones, check their positions first.
 4. For templates, create frames first, then add content inside them.
 5. Connect related objects with connectors when appropriate.
 6. Respond concisely — describe what you created and where.
-7. If the user asks to modify existing objects, use get_board_state first to find the right IDs.`;
+7. If the user asks to modify existing objects, use getBoardState first to find the right IDs.`;
