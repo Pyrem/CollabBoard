@@ -8,10 +8,15 @@ export interface AIMessage {
   content: string;
 }
 
+export interface ViewportCenter {
+  x: number;
+  y: number;
+}
+
 export interface UseAIReturn {
   messages: AIMessage[];
   isLoading: boolean;
-  sendCommand: (command: string, boardId: string) => Promise<void>;
+  sendCommand: (command: string, boardId: string, viewportCenter?: ViewportCenter) => Promise<void>;
 }
 
 /**
@@ -25,7 +30,7 @@ export function useAI(): UseAIReturn {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const sendCommand = useCallback(async (command: string, boardId: string): Promise<void> => {
+  const sendCommand = useCallback(async (command: string, boardId: string, viewportCenter?: ViewportCenter): Promise<void> => {
     setMessages((prev) => [...prev, { role: 'user', content: command }]);
     setIsLoading(true);
 
@@ -42,7 +47,7 @@ export function useAI(): UseAIReturn {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ command, boardId }),
+        body: JSON.stringify({ command, boardId, viewportCenter }),
       });
 
       if (!res.ok) {

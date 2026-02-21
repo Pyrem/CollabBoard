@@ -51,7 +51,11 @@ export function aiCommandHandler(
 ): (req: Request, res: Response) => void {
   return (req: Request, res: Response): void => {
     const authReq = req as AuthenticatedRequest;
-    const { command, boardId } = req.body as { command?: string; boardId?: string };
+    const { command, boardId, viewportCenter } = req.body as {
+      command?: string;
+      boardId?: string;
+      viewportCenter?: { x: number; y: number };
+    };
 
     if (!command || !boardId) {
       res.status(400).json({ error: 'Missing command or boardId' });
@@ -60,7 +64,7 @@ export function aiCommandHandler(
 
     const userId = authReq.userId ?? 'ai-agent';
 
-    void handleAICommand(hocuspocus, command, boardId, userId, res);
+    void handleAICommand(hocuspocus, command, boardId, userId, res, viewportCenter);
   };
 }
 
@@ -70,6 +74,7 @@ async function handleAICommand(
   boardId: string,
   userId: string,
   res: Response,
+  viewportCenter?: { x: number; y: number },
 ): Promise<void> {
   let docCleanup: (() => Promise<void>) | null = null;
 
@@ -77,9 +82,14 @@ async function handleAICommand(
     const { doc, cleanup } = await getDocument(hocuspocus, boardId);
     docCleanup = cleanup;
 
-    // Build initial messages
+    // Build initial messages with viewport context
+    let userMessage = command;
+    if (viewportCenter) {
+      userMessage = `[The user's viewport is currently centered at coordinates (${Math.round(viewportCenter.x)}, ${Math.round(viewportCenter.y)}). Place new objects near this area so they are visible to the user.]\n\n${command}`;
+    }
+
     const messages: Anthropic.MessageParam[] = [
-      { role: 'user', content: command },
+      { role: 'user', content: userMessage },
     ];
 
     let toolCallCount = 0;

@@ -56,7 +56,8 @@ export function BoardPage(): React.JSX.Element {
   }, []);
 
   const handleAISend = useCallback((command: string) => {
-    void ai.sendCommand(command, boardId);
+    const center = getSceneCenterRef.current?.();
+    void ai.sendCommand(command, boardId, center ?? undefined);
   }, [ai, boardId]);
 
   if (!yjs) {
