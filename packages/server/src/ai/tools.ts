@@ -3,8 +3,8 @@ import type Anthropic from '@anthropic-ai/sdk';
 /**
  * Tool definitions for the CollabBoard AI agent.
  *
- * Exactly 9 tools matching the minimum spec:
- *   createStickyNote, createShape, createFrame, createConnector,
+ * 10 tools:
+ *   createStickyNote, createShape, createText, createFrame, createConnector,
  *   moveObject, resizeObject, updateText, changeColor, getBoardState
  *
  * The executor in `executor.ts` handles the actual Yjs writes.
@@ -93,6 +93,22 @@ export const aiTools: Anthropic.Tool[] = [
         },
       },
       required: ['fromId', 'toId'],
+    },
+  },
+  {
+    name: 'createText',
+    description:
+      'Create a standalone text element on the board. Use for labels, headers, or any free-form text that is not inside a sticky note.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        text: { type: 'string', description: 'The text content' },
+        x: { type: 'number', description: 'X position on the canvas' },
+        y: { type: 'number', description: 'Y position on the canvas' },
+        fontSize: { type: 'number', description: 'Font size in pixels (default 20)' },
+        color: { type: 'string', description: 'Text color as hex string (default #333333)' },
+      },
+      required: ['text', 'x', 'y'],
     },
   },
   {

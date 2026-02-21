@@ -6,6 +6,7 @@ import type {
   RectangleShape,
   Frame,
   Connector,
+  TextElement,
 } from '@collabboard/shared';
 import {
   DEFAULT_STICKY_COLOR,
@@ -19,6 +20,10 @@ import {
   DEFAULT_FRAME_HEIGHT,
   DEFAULT_FRAME_FILL,
   DEFAULT_CONNECTOR_STROKE,
+  DEFAULT_TEXT_FONT_SIZE,
+  DEFAULT_TEXT_FILL,
+  DEFAULT_TEXT_WIDTH,
+  DEFAULT_TEXT_HEIGHT,
   MAX_OBJECTS_PER_BOARD,
   validateBoardObject,
 } from '@collabboard/shared';
@@ -34,7 +39,7 @@ export interface ToolResult {
  * Execute a single AI tool call against a Yjs document.
  *
  * Tool names match the spec exactly (camelCase):
- *   getBoardState, createStickyNote, createShape, createFrame,
+ *   getBoardState, createStickyNote, createShape, createText, createFrame,
  *   createConnector, moveObject, resizeObject, updateText, changeColor
  */
 export function executeTool(
@@ -170,6 +175,30 @@ export function executeTool(
       };
       objectsMap.set(id, connector);
       return { success: true, message: `Created connector from ${fromId} to ${toId}`, data: { id } };
+    }
+
+    case 'createText': {
+      if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) {
+        return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
+      }
+      const id = uuidv4();
+      const textEl: TextElement = {
+        id,
+        type: 'text',
+        x: input['x'] as number,
+        y: input['y'] as number,
+        width: DEFAULT_TEXT_WIDTH,
+        height: DEFAULT_TEXT_HEIGHT,
+        rotation: 0,
+        zIndex: objectsMap.size,
+        lastModifiedBy: userId,
+        lastModifiedAt: Date.now(),
+        text: (input['text'] as string) ?? '',
+        fontSize: (input['fontSize'] as number | undefined) ?? DEFAULT_TEXT_FONT_SIZE,
+        fill: (input['color'] as string | undefined) ?? DEFAULT_TEXT_FILL,
+      };
+      objectsMap.set(id, textEl);
+      return { success: true, message: `Created text "${textEl.text}" at (${String(textEl.x)}, ${String(textEl.y)})`, data: { id } };
     }
 
     case 'moveObject': {
