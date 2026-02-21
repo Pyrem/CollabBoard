@@ -7,6 +7,7 @@ import { getBoardId, setBoardId, setFrameContent, createFrameFromData, findByBoa
 import { findContainingFrame, findEvictedChildren, getAllFrames, getFrameBounds, isInsideFrame } from './containment.js';
 
 const log = logger('throttle');
+const containmentLog = logger('containment');
 
 /** Stroke color/width used to highlight a frame when an object is dragged over it. */
 const FRAME_HIGHLIGHT_STROKE = '#2196F3';
@@ -567,6 +568,14 @@ export function attachLocalModifications(
           const deltaX = (obj.left ?? 0) - boardData.x;
           const deltaY = (obj.top ?? 0) - boardData.y;
 
+          containmentLog.debug('frame move commit', {
+            frameId: id,
+            from: { x: boardData.x, y: boardData.y },
+            to: { x: obj.left ?? 0, y: obj.top ?? 0 },
+            delta: { x: deltaX, y: deltaY },
+            childrenIds: frame.childrenIds,
+          });
+
           // Build batch: frame position + all children offset by delta
           const updates: Array<{ id: string; updates: Partial<BoardObject> }> = [
             { id, updates: { x: obj.left ?? 0, y: obj.top ?? 0 } },
@@ -620,6 +629,12 @@ export function attachLocalModifications(
 
     // Containment check: only non-frame objects can join/leave frames on drop
     const droppedData = boardRef.current.getObject(id);
+    containmentLog.debug('drop check', {
+      id,
+      type: droppedData?.type,
+      eligible: droppedData ? droppedData.type !== 'frame' && droppedData.type !== 'connector' : false,
+      dataExists: !!droppedData,
+    });
     if (droppedData && droppedData.type !== 'frame' && droppedData.type !== 'connector') {
       clearFrameHighlight();
       // Compute actual center (x/y is top-left corner in Fabric)
@@ -630,7 +645,23 @@ export function attachLocalModifications(
       const currentParentId = droppedData.parentId ?? null;
       const newParentId = containingFrame?.id ?? null;
 
+      containmentLog.debug('center & frame test', {
+        id,
+        objPos: { x: droppedData.x, y: droppedData.y, w: droppedData.width, h: droppedData.height },
+        center: { x: objCenterX, y: objCenterY },
+        frameCount: frames.length,
+        frames: frames.map((f) => ({
+          id: f.id,
+          bounds: { left: f.x, top: f.y, right: f.x + f.width, bottom: f.y + f.height },
+        })),
+        containingFrameId: containingFrame?.id ?? null,
+        currentParentId,
+        newParentId,
+        willReparent: currentParentId !== newParentId,
+      });
+
       if (currentParentId !== newParentId) {
+        containmentLog.debug('reparent', { id, from: currentParentId, to: newParentId });
         isLocalUpdateRef.current = true;
         localUpdateIdsRef.current.add(id);
         if (currentParentId) localUpdateIdsRef.current.add(currentParentId);

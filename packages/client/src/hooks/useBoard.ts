@@ -31,6 +31,7 @@ import {
 } from '@collabboard/shared';
 
 const log = logger('batch');
+const containmentLog = logger('containment');
 
 export interface UseBoardReturn {
   createStickyNote: (x: number, y: number, text?: string, color?: string) => string | null;
@@ -451,10 +452,23 @@ export function useBoard(
       // Prevent frame nesting
       if (child.type === 'frame') return;
 
+      containmentLog.debug('reparent called', {
+        objectId,
+        objectType: child.type,
+        fromFrameId,
+        toFrameId,
+      });
+
       doc.transact(() => {
         // Remove from old frame
         if (fromFrameId) {
           const oldFrame = objectsMap.get(fromFrameId) as BoardObject | undefined;
+          containmentLog.debug('remove from old frame', {
+            fromFrameId,
+            oldFrameExists: !!oldFrame,
+            oldFrameType: oldFrame?.type,
+            oldChildrenIds: oldFrame?.type === 'frame' ? (oldFrame as Frame).childrenIds : [],
+          });
           if (oldFrame?.type === 'frame') {
             const oldFrameData = oldFrame as Frame;
             objectsMap.set(fromFrameId, {
@@ -468,6 +482,12 @@ export function useBoard(
         // Add to new frame
         if (toFrameId) {
           const newFrame = objectsMap.get(toFrameId) as BoardObject | undefined;
+          containmentLog.debug('add to new frame', {
+            toFrameId,
+            newFrameExists: !!newFrame,
+            newFrameType: newFrame?.type,
+            existingChildrenIds: newFrame?.type === 'frame' ? (newFrame as Frame).childrenIds : [],
+          });
           if (newFrame?.type === 'frame') {
             const newFrameData = newFrame as Frame;
             objectsMap.set(toFrameId, {
@@ -479,6 +499,7 @@ export function useBoard(
           }
         }
         // Update child's parentId
+        containmentLog.debug('set child parentId', { objectId, parentId: toFrameId });
         objectsMap.set(objectId, {
           ...child,
           parentId: toFrameId,
