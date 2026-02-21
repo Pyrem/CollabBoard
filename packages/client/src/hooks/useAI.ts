@@ -59,7 +59,18 @@ export function useAI(): UseAIReturn {
         return;
       }
 
-      const data = await res.json() as { response?: string; error?: string };
+      const text = await res.text();
+      if (!text) {
+        setMessages((prev) => [...prev, { role: 'error', content: 'Empty response from server' }]);
+        return;
+      }
+      let data: { response?: string; error?: string };
+      try {
+        data = JSON.parse(text) as { response?: string; error?: string };
+      } catch {
+        setMessages((prev) => [...prev, { role: 'error', content: 'Invalid response from server — is VITE_AI_ENDPOINT_URL configured?' }]);
+        return;
+      }
       if (data.error) {
         setMessages((prev) => [...prev, { role: 'error', content: data.error ?? 'Unknown error' }]);
       } else {
