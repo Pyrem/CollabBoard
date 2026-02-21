@@ -6,10 +6,12 @@ import { useYjs } from '../../hooks/useYjs.js';
 import { useBoard } from '../../hooks/useBoard.js';
 import { useCursors } from '../../hooks/useCursors.js';
 import { usePresence } from '../../hooks/usePresence.js';
+import { useAI } from '../../hooks/useAI.js';
 import { Canvas, type SelectedObject, type SceneCenter, type ViewportState } from './Canvas.js';
 import { Toolbar } from '../Toolbar/Toolbar.js';
 import { CursorOverlay } from '../Cursors/CursorOverlay.js';
 import { PresencePanel } from '../Presence/PresencePanel.js';
+import { AIChat } from '../AIAgent/AIChat.js';
 
 export function BoardPage(): React.JSX.Element {
   const { boardId = 'default' } = useParams<{ boardId: string }>();
@@ -34,6 +36,7 @@ export function BoardPage(): React.JSX.Element {
     photoURL,
   );
   const onlineUsers = usePresence(yjs?.provider ?? null);
+  const ai = useAI();
 
   const [selectedObject, setSelectedObject] = useState<SelectedObject | null>(null);
   const [viewport, setViewport] = useState<ViewportState>({ zoom: 1, panX: 0, panY: 0 });
@@ -51,6 +54,10 @@ export function BoardPage(): React.JSX.Element {
   const handleViewportChange = useCallback((vp: ViewportState) => {
     setViewport(vp);
   }, []);
+
+  const handleAISend = useCallback((command: string) => {
+    void ai.sendCommand(command, boardId);
+  }, [ai, boardId]);
 
   if (!yjs) {
     return (
@@ -76,6 +83,7 @@ export function BoardPage(): React.JSX.Element {
       <CursorOverlay cursors={remoteCursors} viewport={viewport} />
       <Toolbar board={board} selectedObject={selectedObject} activeTool={activeTool} onToolChange={setActiveTool} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
       <PresencePanel users={onlineUsers} />
+      <AIChat messages={ai.messages} isLoading={ai.isLoading} onSend={handleAISend} />
       <button onClick={() => void handleLogout()} style={styles.logoutBtn}>
         Log out
       </button>
