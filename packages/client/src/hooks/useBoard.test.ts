@@ -39,6 +39,7 @@ function createStickyNote(
     zIndex: map.size,
     lastModifiedBy: userId,
     lastModifiedAt: Date.now(),
+    parentId: null,
     text,
     color,
   };
@@ -65,6 +66,7 @@ function createRectangle(
     zIndex: map.size,
     lastModifiedBy: userId,
     lastModifiedAt: Date.now(),
+    parentId: null,
     fill: DEFAULT_FILL,
     stroke: DEFAULT_STROKE,
   };
@@ -450,6 +452,7 @@ describe('Board CRUD operations', () => {
           zIndex: 0,
           lastModifiedBy: userId,
           lastModifiedAt: Date.now(),
+          parentId: null,
           text: 'first',
           color: DEFAULT_STICKY_COLOR,
         },
@@ -464,6 +467,7 @@ describe('Board CRUD operations', () => {
           zIndex: 1,
           lastModifiedBy: userId,
           lastModifiedAt: Date.now(),
+          parentId: null,
           fill: DEFAULT_FILL,
           stroke: DEFAULT_STROKE,
         },
@@ -490,6 +494,7 @@ describe('Board CRUD operations', () => {
           width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT,
           rotation: 0, zIndex: 0,
           lastModifiedBy: userId, lastModifiedAt: Date.now(),
+          parentId: null,
           text: '', color: DEFAULT_STICKY_COLOR,
         },
         {
@@ -499,6 +504,7 @@ describe('Board CRUD operations', () => {
           width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT,
           rotation: 0, zIndex: 1,
           lastModifiedBy: userId, lastModifiedAt: Date.now(),
+          parentId: null,
           text: '', color: DEFAULT_STICKY_COLOR,
         },
         {
@@ -508,6 +514,7 @@ describe('Board CRUD operations', () => {
           width: DEFAULT_STICKY_WIDTH, height: DEFAULT_STICKY_HEIGHT,
           rotation: 0, zIndex: 2,
           lastModifiedBy: userId, lastModifiedAt: Date.now(),
+          parentId: null,
           text: '', color: DEFAULT_STICKY_COLOR,
         },
       ];

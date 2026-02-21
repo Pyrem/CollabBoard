@@ -1,6 +1,6 @@
 import { Canvas as FabricCanvas, ActiveSelection } from 'fabric';
 import type { RefObject, MutableRefObject } from 'react';
-import type { BoardObject, Connector } from '@collabboard/shared';
+import type { BoardObject, Connector, Frame } from '@collabboard/shared';
 import { logger } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
 import type { SelectedObject, EditingState } from '../Canvas.js';
@@ -74,6 +74,36 @@ function cascadeDeleteConnectors(
 }
 
 /**
+ * Clean up frame-child relationships before deleting objects.
+ *
+ * - If deleting a frame: unparent all its children (don't delete them).
+ * - If deleting a child that has a parentId: remove it from the parent frame's childrenIds.
+ */
+function cleanupFrameRelationships(
+  board: ReturnType<typeof useBoard>,
+  deletedIds: Set<string>,
+): void {
+  for (const id of deletedIds) {
+    const obj = board.getObject(id);
+    if (!obj) continue;
+
+    if (obj.type === 'frame') {
+      // Unparent all children of this frame
+      const frame = obj as Frame;
+      for (const childId of frame.childrenIds) {
+        if (deletedIds.has(childId)) continue; // child is also being deleted
+        board.removeFromFrame(childId, id);
+      }
+    } else if (obj.parentId) {
+      // Remove this child from its parent frame's childrenIds
+      if (!deletedIds.has(obj.parentId)) {
+        board.removeFromFrame(id, obj.parentId);
+      }
+    }
+  }
+}
+
+/**
  * Attach selection tracking (selection:created/updated/cleared) and
  * keyboard delete (Delete/Backspace) listeners.
  * Returns a cleanup function.
@@ -130,6 +160,7 @@ export function attachSelectionManager(
       canvas.discardActiveObject();
       if (ids.length > 0) {
         log.debug('multi-delete', { count: ids.length, objects: details });
+        cleanupFrameRelationships(boardRef.current, new Set(ids));
         cascadeDeleteConnectors(boardRef.current, new Set(ids));
         boardRef.current.batchDeleteObjects(ids);
       }
@@ -141,6 +172,7 @@ export function attachSelectionManager(
       const detail = data ? describeObject(data) : { id, type: 'unknown' };
       canvas.discardActiveObject();
       log.debug('single-delete', detail);
+      cleanupFrameRelationships(boardRef.current, new Set([id]));
       cascadeDeleteConnectors(boardRef.current, new Set([id]));
       boardRef.current.deleteObject(id);
     }

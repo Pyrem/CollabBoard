@@ -11,6 +11,7 @@ export interface BaseBoardObject {
   zIndex: number;
   lastModifiedBy: string;
   lastModifiedAt: number;
+  parentId: string | null;
 }
 
 export interface StickyNote extends BaseBoardObject {
@@ -51,6 +52,7 @@ export interface Frame extends BaseBoardObject {
   type: 'frame';
   title: string;
   fill: string;
+  childrenIds: string[];
 }
 
 export interface TextElement extends BaseBoardObject {
@@ -117,18 +119,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function hasBaseFields(obj: Record<string, unknown>): boolean {
-  return (
-    typeof obj['id'] === 'string' &&
-    typeof obj['type'] === 'string' &&
-    typeof obj['x'] === 'number' &&
-    typeof obj['y'] === 'number' &&
-    typeof obj['width'] === 'number' &&
-    typeof obj['height'] === 'number' &&
-    typeof obj['rotation'] === 'number' &&
-    typeof obj['zIndex'] === 'number' &&
-    typeof obj['lastModifiedBy'] === 'string' &&
-    typeof obj['lastModifiedAt'] === 'number'
-  );
+  if (
+    typeof obj['id'] !== 'string' ||
+    typeof obj['type'] !== 'string' ||
+    typeof obj['x'] !== 'number' ||
+    typeof obj['y'] !== 'number' ||
+    typeof obj['width'] !== 'number' ||
+    typeof obj['height'] !== 'number' ||
+    typeof obj['rotation'] !== 'number' ||
+    typeof obj['zIndex'] !== 'number' ||
+    typeof obj['lastModifiedBy'] !== 'string' ||
+    typeof obj['lastModifiedAt'] !== 'number'
+  ) {
+    return false;
+  }
+  // Backward compat: default parentId to null if missing
+  if (obj['parentId'] === undefined) {
+    obj['parentId'] = null;
+  } else if (obj['parentId'] !== null && typeof obj['parentId'] !== 'string') {
+    return false;
+  }
+  return true;
 }
 
 function hasStringFields(obj: Record<string, unknown>, fields: string[]): boolean {
@@ -165,6 +176,12 @@ export function validateBoardObject(value: unknown): BoardObject | null {
       break;
     case 'frame':
       if (!hasStringFields(value, ['title', 'fill'])) return null;
+      // Backward compat: default childrenIds to [] if missing
+      if (value['childrenIds'] === undefined) {
+        value['childrenIds'] = [];
+      } else if (!Array.isArray(value['childrenIds'])) {
+        return null;
+      }
       break;
     case 'text':
       if (!hasStringFields(value, ['text', 'fill'])) return null;

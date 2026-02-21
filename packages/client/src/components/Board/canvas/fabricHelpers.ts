@@ -288,8 +288,12 @@ export function createFrameFromData(frameData: Frame): Group {
     subTargetCheck: false,
     interactive: false,
     perPixelTargetFind: true,
+    lockRotation: true,
     // Frames are resizable — no lockScaling
   });
+
+  // Hide the rotation handle — frames don't rotate
+  group.setControlVisible('mtr', false);
 
   // Use the explicit data dimensions — NOT group.width/height which includes
   // strokeWidth and can drift larger on each reconstruction cycle.

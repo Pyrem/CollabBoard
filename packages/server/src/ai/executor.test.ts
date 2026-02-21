@@ -71,6 +71,7 @@ function makeSticky(overrides: Partial<StickyNote> & { id: string }): StickyNote
     zIndex: 0,
     lastModifiedBy: TEST_USER,
     lastModifiedAt: Date.now(),
+    parentId: null,
     text: 'Test',
     color: DEFAULT_STICKY_COLOR,
     ...overrides,
@@ -89,6 +90,7 @@ function makeRect(overrides: Partial<RectangleShape> & { id: string }): Rectangl
     zIndex: 0,
     lastModifiedBy: TEST_USER,
     lastModifiedAt: Date.now(),
+    parentId: null,
     fill: DEFAULT_FILL,
     stroke: DEFAULT_STROKE,
     ...overrides,
@@ -107,6 +109,7 @@ function makeConnector(overrides: Partial<Connector> & { id: string; fromId: str
     zIndex: 0,
     lastModifiedBy: TEST_USER,
     lastModifiedAt: Date.now(),
+    parentId: null,
     stroke: DEFAULT_CONNECTOR_STROKE,
     style: 'straight',
     ...overrides,
@@ -542,6 +545,7 @@ describe('updateText', () => {
       zIndex: 0,
       lastModifiedBy: TEST_USER,
       lastModifiedAt: Date.now(),
+      parentId: null,
       text: 'Old',
       fontSize: 20,
       fill: '#333',
@@ -573,8 +577,10 @@ describe('updateText', () => {
       zIndex: 0,
       lastModifiedBy: TEST_USER,
       lastModifiedAt: Date.now(),
+      parentId: null,
       title: 'Old Title',
       fill: DEFAULT_FRAME_FILL,
+      childrenIds: [],
     };
     seedObject(doc, frame);
 
@@ -681,7 +687,9 @@ describe('changeColor', () => {
       type: 'frame',
       x: 0, y: 0, width: 400, height: 300, rotation: 0, zIndex: 0,
       lastModifiedBy: TEST_USER, lastModifiedAt: Date.now(),
+      parentId: null,
       title: 'F', fill: DEFAULT_FRAME_FILL,
+      childrenIds: [],
     };
     seedObject(doc, frame);
 

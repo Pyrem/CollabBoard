@@ -143,9 +143,15 @@ export function useObjectSync(
             const frameData = data as Frame;
             const prev = getFrameContent(existing);
 
+            // Detect position change for child propagation
+            const oldLeft = existing.left ?? 0;
+            const oldTop = existing.top ?? 0;
+            const deltaX = frameData.x - oldLeft;
+            const deltaY = frameData.y - oldTop;
+
             if (prev && prev.title === frameData.title && prev.fill === frameData.fill &&
                 prev.width === frameData.width && prev.height === frameData.height) {
-              // Position/rotation-only change — lightweight update
+              // Position-only change — lightweight update
               existing.set({ left: frameData.x, top: frameData.y, angle: frameData.rotation });
               existing.setCoords();
             } else {
@@ -160,6 +166,23 @@ export function useObjectSync(
               group.setCoords();
               if (wasActive) {
                 canvas.setActiveObject(group);
+              }
+            }
+
+            // Propagate frame movement to children on canvas.
+            // During a remote drag, only the frame position is synced per tick;
+            // children positions arrive on drop. Moving them here keeps them
+            // visually attached while the remote user is still dragging.
+            if ((deltaX !== 0 || deltaY !== 0) && frameData.childrenIds.length > 0) {
+              for (const childId of frameData.childrenIds) {
+                const childFab = findByBoardId(canvas, childId);
+                if (!childFab) continue;
+                childFab.set({
+                  left: (childFab.left ?? 0) + deltaX,
+                  top: (childFab.top ?? 0) + deltaY,
+                });
+                childFab.setCoords();
+                refreshConnectorsFor(childId);
               }
             }
             break;

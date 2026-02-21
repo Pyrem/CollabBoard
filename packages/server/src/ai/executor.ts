@@ -80,6 +80,7 @@ export function executeTool(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         text: (input['text'] as string) ?? '',
         color: (input['color'] as string) ?? DEFAULT_STICKY_COLOR,
       };
@@ -108,6 +109,7 @@ export function executeTool(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         fill: color,
         stroke: DEFAULT_STROKE,
       };
@@ -131,8 +133,10 @@ export function executeTool(
         zIndex: 0,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         title: (input['title'] as string) ?? 'Frame',
         fill: DEFAULT_FRAME_FILL,
+        childrenIds: [],
       };
       objectsMap.set(id, frame);
       return { success: true, message: `Created frame "${frame.title}" at (${String(frame.x)}, ${String(frame.y)})`, data: { id } };
@@ -168,6 +172,7 @@ export function executeTool(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         fromId,
         toId,
         stroke: DEFAULT_CONNECTOR_STROKE,
@@ -193,6 +198,7 @@ export function executeTool(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         text: (input['text'] as string) ?? '',
         fontSize: (input['fontSize'] as number | undefined) ?? DEFAULT_TEXT_FONT_SIZE,
         fill: (input['color'] as string | undefined) ?? DEFAULT_TEXT_FILL,
@@ -205,14 +211,35 @@ export function executeTool(
       const objectId = input['objectId'] as string;
       const existing = objectsMap.get(objectId) as BoardObject | undefined;
       if (!existing) return { success: false, message: `Object "${objectId}" not found` };
-      objectsMap.set(objectId, {
-        ...existing,
-        x: input['x'] as number,
-        y: input['y'] as number,
-        lastModifiedBy: userId,
-        lastModifiedAt: Date.now(),
+      const newX = input['x'] as number;
+      const newY = input['y'] as number;
+      const deltaX = newX - existing.x;
+      const deltaY = newY - existing.y;
+      doc.transact(() => {
+        objectsMap.set(objectId, {
+          ...existing,
+          x: newX,
+          y: newY,
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+        });
+        // If moving a frame, move all children by the same delta
+        if (existing.type === 'frame') {
+          const frame = existing as Frame;
+          for (const childId of frame.childrenIds) {
+            const child = objectsMap.get(childId) as BoardObject | undefined;
+            if (!child) continue;
+            objectsMap.set(childId, {
+              ...child,
+              x: child.x + deltaX,
+              y: child.y + deltaY,
+              lastModifiedBy: userId,
+              lastModifiedAt: Date.now(),
+            });
+          }
+        }
       });
-      return { success: true, message: `Moved object to (${String(input['x'])}, ${String(input['y'])})` };
+      return { success: true, message: `Moved object to (${String(newX)}, ${String(newY)})` };
     }
 
     case 'resizeObject': {

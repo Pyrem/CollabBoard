@@ -4,8 +4,15 @@ import { getObjectSyncThrottle, getAdaptiveThrottleMs, logger } from '@collabboa
 import type { BoardObject, Frame, Connector } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
 import { getBoardId, setBoardId, setFrameContent, createFrameFromData, findByBoardId, getNearestPorts, updateConnectorLine } from './fabricHelpers.js';
+import { findContainingFrame, findEvictedChildren, getAllFrames, getFrameBounds, isInsideFrame } from './containment.js';
 
 const log = logger('throttle');
+
+/** Stroke color/width used to highlight a frame when an object is dragged over it. */
+const FRAME_HIGHLIGHT_STROKE = '#2196F3';
+const FRAME_HIGHLIGHT_STROKE_WIDTH = 3;
+const FRAME_NORMAL_STROKE = '#999';
+const FRAME_NORMAL_STROKE_WIDTH = 2;
 
 /**
  * Reposition all Fabric Line connectors attached to a given object.
@@ -76,6 +83,69 @@ export function attachLocalModifications(
   localUpdateIdsRef: MutableRefObject<Set<string>>,
   lastObjectSyncRef: MutableRefObject<Record<string, number>>,
 ): () => void {
+  // --- Frame-child drag tracking state ---
+  // Previous frame position during drag, for computing incremental deltas.
+  const framePrevPos: Record<string, { x: number; y: number }> = {};
+  // Currently highlighted frame (for visual feedback when dragging into a frame).
+  let highlightedFrameId: string | null = null;
+
+  /**
+   * Move all children of a frame on the local Fabric canvas by a delta.
+   * Visual-only (no Yjs writes). Also repositions connectors attached to children.
+   */
+  function moveFrameChildrenOnCanvas(
+    frameData: Frame,
+    deltaX: number,
+    deltaY: number,
+    writeToYjs: boolean,
+  ): void {
+    for (const childId of frameData.childrenIds) {
+      const childFab = findByBoardId(canvas, childId);
+      if (!childFab) continue;
+      childFab.set({
+        left: (childFab.left ?? 0) + deltaX,
+        top: (childFab.top ?? 0) + deltaY,
+      });
+      childFab.setCoords();
+      repositionConnectors(canvas, boardRef, childId, writeToYjs,
+        writeToYjs ? isLocalUpdateRef : undefined,
+        writeToYjs ? localUpdateIdsRef : undefined);
+    }
+  }
+
+  /**
+   * Reset any active frame highlight back to normal styling.
+   */
+  function clearFrameHighlight(): void {
+    if (!highlightedFrameId) return;
+    const frameFab = findByBoardId(canvas, highlightedFrameId);
+    if (frameFab && frameFab instanceof Group) {
+      const bg = frameFab.getObjects()[0];
+      if (bg) {
+        bg.set({ stroke: FRAME_NORMAL_STROKE, strokeWidth: FRAME_NORMAL_STROKE_WIDTH });
+        frameFab.dirty = true;
+      }
+    }
+    highlightedFrameId = null;
+  }
+
+  /**
+   * Highlight a frame's border to show it will accept a dropped object.
+   */
+  function setFrameHighlight(frameId: string): void {
+    if (highlightedFrameId === frameId) return;
+    clearFrameHighlight();
+    const frameFab = findByBoardId(canvas, frameId);
+    if (frameFab && frameFab instanceof Group) {
+      const bg = frameFab.getObjects()[0];
+      if (bg) {
+        bg.set({ stroke: FRAME_HIGHLIGHT_STROKE, strokeWidth: FRAME_HIGHLIGHT_STROKE_WIDTH });
+        frameFab.dirty = true;
+      }
+    }
+    highlightedFrameId = frameId;
+  }
+
   // canvas.on() returns a VoidFunction disposer in Fabric v6
   const disposeMoving = canvas.on('object:moving', (opt) => {
     if (isRemoteUpdateRef.current) return;
@@ -138,6 +208,37 @@ export function attachLocalModifications(
 
     // Update connected connectors visually (no Yjs write during drag)
     repositionConnectors(canvas, boardRef, id, false);
+
+    // Frame-specific: move children on canvas during drag
+    const boardData = boardRef.current.getObject(id);
+    if (boardData?.type === 'frame') {
+      const frameX = obj.left ?? 0;
+      const frameY = obj.top ?? 0;
+      if (!framePrevPos[id]) {
+        // First move event — seed from the Yjs data (position before drag)
+        framePrevPos[id] = { x: boardData.x, y: boardData.y };
+      }
+      const prev = framePrevPos[id];
+      const deltaX = frameX - prev.x;
+      const deltaY = frameY - prev.y;
+      if (deltaX !== 0 || deltaY !== 0) {
+        moveFrameChildrenOnCanvas(boardData as Frame, deltaX, deltaY, false);
+        framePrevPos[id] = { x: frameX, y: frameY };
+      }
+    }
+
+    // Non-frame: visual highlight if dragging over a frame
+    if (boardData && boardData.type !== 'frame') {
+      const objCenterX = obj.left ?? 0;
+      const objCenterY = obj.top ?? 0;
+      const frames = getAllFrames(boardRef.current.getAllObjects());
+      const containingFrame = findContainingFrame(objCenterX, objCenterY, frames);
+      if (containingFrame) {
+        setFrameHighlight(containingFrame.id);
+      } else {
+        clearFrameHighlight();
+      }
+    }
   });
 
   const disposeScaling = canvas.on('object:scaling', (opt) => {
@@ -450,15 +551,43 @@ export function attachLocalModifications(
             canvas.add(newGroup);
             canvas.sendObjectToBack(newGroup);
             newGroup.setCoords();
+
+            // Evict children whose centers are now outside the resized frame
+            const evicted = findEvictedChildren(frameData as Frame, boardRef.current.getAllObjects());
+            for (const childId of evicted) {
+              localUpdateIdsRef.current.add(childId);
+              localUpdateIdsRef.current.add(id);
+              boardRef.current.removeFromFrame(childId, id);
+            }
           }
         } else {
-          // Position/rotation-only change — no reconstruction needed
-          boardRef.current.updateObject(id, {
-            x: obj.left ?? 0,
-            y: obj.top ?? 0,
-            rotation: obj.angle ?? 0,
-          });
+          // Position-only change (frames don't rotate) — batch-commit children positions
+          const frame = boardData as Frame;
+          const deltaX = (obj.left ?? 0) - boardData.x;
+          const deltaY = (obj.top ?? 0) - boardData.y;
+
+          // Build batch: frame position + all children offset by delta
+          const updates: Array<{ id: string; updates: Partial<BoardObject> }> = [
+            { id, updates: { x: obj.left ?? 0, y: obj.top ?? 0 } },
+          ];
+          for (const childId of frame.childrenIds) {
+            const child = boardRef.current.getObject(childId);
+            if (!child) continue;
+            localUpdateIdsRef.current.add(childId);
+            updates.push({
+              id: childId,
+              updates: { x: child.x + deltaX, y: child.y + deltaY },
+            });
+          }
+          boardRef.current.batchUpdateObjects(updates);
+
+          // Reposition connectors for all moved children
+          for (const childId of frame.childrenIds) {
+            repositionConnectors(canvas, boardRef, childId, true, isLocalUpdateRef, localUpdateIdsRef);
+          }
         }
+        // Clean up drag tracking
+        delete framePrevPos[id];
       } else {
         // Sticky notes: position + rotation (fixed-size, no scale normalisation)
         boardRef.current.updateObject(id, {
@@ -487,6 +616,27 @@ export function attachLocalModifications(
 
     // Update connected connectors with Yjs write for remote sync
     repositionConnectors(canvas, boardRef, id, true, isLocalUpdateRef, localUpdateIdsRef);
+
+    // Containment check: only non-frame objects can join/leave frames on drop
+    const droppedData = boardRef.current.getObject(id);
+    if (droppedData && droppedData.type !== 'frame') {
+      clearFrameHighlight();
+      const objCenterX = droppedData.x;
+      const objCenterY = droppedData.y;
+      const frames = getAllFrames(boardRef.current.getAllObjects());
+      const containingFrame = findContainingFrame(objCenterX, objCenterY, frames);
+      const currentParentId = droppedData.parentId ?? null;
+      const newParentId = containingFrame?.id ?? null;
+
+      if (currentParentId !== newParentId) {
+        isLocalUpdateRef.current = true;
+        localUpdateIdsRef.current.add(id);
+        if (currentParentId) localUpdateIdsRef.current.add(currentParentId);
+        if (newParentId) localUpdateIdsRef.current.add(newParentId);
+        boardRef.current.reparent(id, currentParentId, newParentId);
+        isLocalUpdateRef.current = false;
+      }
+    }
 
     canvas.renderAll();
   });
