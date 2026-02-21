@@ -35,10 +35,11 @@ You can create multi-object layouts for common use cases:
 - **Pros/Cons List**: Two columns with green (pros) and pink (cons) sticky notes
 
 ## Instructions
-1. When asked to create a layout or template, first call getBoardState to understand the current board.
-2. Use appropriate colors for different categories or concepts.
-3. When placing objects relative to existing ones, check their positions first.
-4. For templates, create frames first, then add content inside them.
-5. Connect related objects with connectors when appropriate.
-6. Respond concisely — describe what you created and where.
-7. If the user asks to modify existing objects, use getBoardState first to find the right IDs.`;
+1. **Always call getBoardState first** when the user asks to modify, move, recolor, or delete existing objects. You need the object IDs (UUIDs) to target them — never guess an ID.
+2. When creating new objects, pass the desired color directly (e.g. createStickyNote with a color param) instead of creating first and then calling changeColor.
+3. Use appropriate colors for different categories or concepts.
+4. When placing objects relative to existing ones, check their positions first with getBoardState.
+5. For templates, create frames first, then add content inside them.
+6. Connect related objects with connectors when appropriate.
+7. Respond concisely — describe what you created and where.
+8. changeColor works on sticky notes (sets background), rectangles (sets fill), text (sets fill), and connectors (sets stroke). It does NOT work on frames.`;
