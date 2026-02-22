@@ -8,7 +8,16 @@ import { getBoardId } from './fabricHelpers.js';
 
 const log = logger('selection');
 
-/** Extract loggable details from a board object. */
+/**
+ * Extract a loggable subset of fields from a board object.
+ *
+ * Includes common fields (`id`, `type`, `x`, `y`) plus type-specific fields
+ * (e.g. `text`/`color` for stickies, `fill`/`stroke` for shapes). Used by
+ * the selection logger for delete and selection events.
+ *
+ * @param obj - The validated board object.
+ * @returns A plain record suitable for structured logging.
+ */
 function describeObject(obj: BoardObject): Record<string, unknown> {
   const base: Record<string, unknown> = {
     id: obj.id,
@@ -52,8 +61,14 @@ function describeObject(obj: BoardObject): Record<string, unknown> {
 }
 
 /**
- * Find and delete all connectors that reference any of the given object IDs.
- * Scans the board for connectors whose `start.id` or `end.id` is in `deletedIds`.
+ * Cascade-delete connectors attached to any of the objects being deleted.
+ *
+ * Scans all board objects for connectors whose `start.id` or `end.id` is in
+ * `deletedIds`, then removes them in a single batch. This prevents orphaned
+ * connector lines from persisting in the Yjs document.
+ *
+ * @param board - The {@link useBoard} return value (provides `getAllObjects`, `batchDeleteObjects`).
+ * @param deletedIds - Set of object UUIDs about to be deleted.
  */
 function cascadeDeleteConnectors(
   board: ReturnType<typeof useBoard>,
@@ -74,10 +89,19 @@ function cascadeDeleteConnectors(
 }
 
 /**
- * Clean up frame-child relationships before deleting objects.
+ * Clean up frame ↔ child relationships before deleting objects.
  *
- * - If deleting a frame: unparent all its children (don't delete them).
- * - If deleting a child that has a parentId: remove it from the parent frame's childrenIds.
+ * Two cases:
+ * 1. **Deleting a frame** — unparents all its children (sets their `parentId`
+ *    to `null` and removes from `childrenIds`). Children are *not* deleted.
+ * 2. **Deleting a child with a `parentId`** — removes the child's ID from the
+ *    parent frame's `childrenIds` array.
+ *
+ * Skips cleanup for objects that are themselves in `deletedIds` (both sides
+ * of the relationship are going away).
+ *
+ * @param board - The {@link useBoard} return value.
+ * @param deletedIds - Set of object UUIDs about to be deleted.
  */
 function cleanupFrameRelationships(
   board: ReturnType<typeof useBoard>,
@@ -104,9 +128,27 @@ function cleanupFrameRelationships(
 }
 
 /**
- * Attach selection tracking (selection:created/updated/cleared) and
- * keyboard delete (Delete/Backspace) listeners.
- * Returns a cleanup function.
+ * Attach selection tracking and keyboard-delete listeners to a Fabric canvas.
+ *
+ * **Selection tracking** — listens for `selection:created`, `selection:updated`,
+ * and `selection:cleared` and calls `onSelectionChangeRef` with the currently
+ * selected object (or `null`). Also enforces the rotation-lock invariant on
+ * `ActiveSelection`s that contain at least one frame.
+ *
+ * **Keyboard delete** — listens for `Delete` and `Backspace` on `window`. When
+ * a single object or an `ActiveSelection` is active, the handler:
+ * 1. Cleans up frame-child relationships via {@link cleanupFrameRelationships}.
+ * 2. Cascade-deletes attached connectors via {@link cascadeDeleteConnectors}.
+ * 3. Deletes the object(s) from the Yjs map.
+ *
+ * Ignores key events when the focus is on `<input>` / `<textarea>` or when a
+ * sticky note is being text-edited (checked via `editingStickyRef`).
+ *
+ * @param canvas - The Fabric canvas to attach listeners to.
+ * @param boardRef - Ref to the {@link useBoard} return value.
+ * @param onSelectionChangeRef - Ref to the callback that receives the selected object.
+ * @param editingStickyRef - Ref to the current sticky-editing state (guards key events).
+ * @returns A cleanup function that removes all listeners.
  */
 export function attachSelectionManager(
   canvas: FabricCanvas,

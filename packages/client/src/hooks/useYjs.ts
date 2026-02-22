@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import type { User } from 'firebase/auth';
 import { createYjsProvider } from '../lib/yjs.js';
 
 interface UseYjsReturn {
@@ -13,11 +14,16 @@ interface UseYjsReturn {
 /**
  * Connect to a Hocuspocus-backed Yjs document for the given board.
  *
- * Creates a `Y.Doc` and `HocuspocusProvider` on mount and tears them down on
- * unmount (or when `boardId` changes). Connection status is tracked in
- * `connected`.
+ * Fetches a Firebase ID token from the supplied `user` before creating
+ * the provider, guaranteeing the WebSocket handshake always carries a
+ * valid JWT.  The provider is only instantiated once the token is
+ * available, so the hook returns `null` until then.
+ *
+ * Tears down the provider and document on unmount (or when `boardId` /
+ * `user` changes). Connection status is tracked in `connected`.
  *
  * @param boardId - Room / document name used by Hocuspocus.
+ * @param user - The authenticated Firebase user (from {@link AuthContext}).
  * @returns `null` until the provider has been created; then an object with:
  *   - `doc` — the raw `Y.Doc` instance
  *   - `provider` — the `HocuspocusProvider` (for awareness / cursor use)
@@ -28,34 +34,50 @@ interface UseYjsReturn {
  * Side-effects: opens a WebSocket connection on mount. The cleanup function
  * calls `provider.destroy()` and `doc.destroy()`.
  */
-export function useYjs(boardId: string): UseYjsReturn | null {
+export function useYjs(boardId: string, user: User): UseYjsReturn | null {
+  const [state, setState] = useState<{ doc: Y.Doc; provider: HocuspocusProvider } | null>(null);
   const [connected, setConnected] = useState(false);
-  const ref = useRef<{ doc: Y.Doc; provider: HocuspocusProvider } | null>(null);
+  // Track whether this effect invocation is still current (not stale)
+  const activeRef = useRef(0);
 
   useEffect(() => {
-    const { doc, provider } = createYjsProvider(boardId);
-    ref.current = { doc, provider };
+    const id = ++activeRef.current;
+    let doc: Y.Doc | null = null;
+    let provider: HocuspocusProvider | null = null;
 
-    provider.on('status', ({ status }: { status: string }) => {
-      console.log('[YJS] Connection status:', status);
-      setConnected(status === 'connected');
-    });
+    user.getIdToken().then((token) => {
+      // If the effect was cleaned up while we were awaiting the token, bail
+      if (id !== activeRef.current) return;
 
-    provider.on('close', ({ event }: { event: CloseEvent }) => {
-      console.log('[YJS] WebSocket closed:', event.code, event.reason);
+      const result = createYjsProvider(boardId, token);
+      doc = result.doc;
+      provider = result.provider;
+
+      provider.on('status', ({ status }: { status: string }) => {
+        console.log('[YJS] Connection status:', status);
+        setConnected(status === 'connected');
+      });
+
+      provider.on('close', ({ event }: { event: CloseEvent }) => {
+        console.log('[YJS] WebSocket closed:', event.code, event.reason);
+      });
+
+      setState({ doc, provider });
+    }).catch((err: unknown) => {
+      console.error('[YJS] Failed to get auth token:', err);
     });
 
     return () => {
-      provider.destroy();
-      doc.destroy();
-      ref.current = null;
+      activeRef.current++;
+      provider?.destroy();
+      doc?.destroy();
+      setState(null);
+      setConnected(false);
     };
-  }, [boardId]);
+  }, [boardId, user]);
 
-  if (!ref.current) return null;
+  if (!state) return null;
 
-  const { doc, provider } = ref.current;
-  const objectsMap = doc.getMap('objects');
-
-  return { doc, provider, objectsMap, connected };
+  const objectsMap = state.doc.getMap('objects');
+  return { doc: state.doc, provider: state.provider, objectsMap, connected };
 }

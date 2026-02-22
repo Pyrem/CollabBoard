@@ -1,6 +1,7 @@
 import { useEffect, type MutableRefObject } from 'react';
 import {
   Canvas as FabricCanvas,
+  Group,
   Rect,
   Textbox,
   Line,
@@ -109,18 +110,26 @@ export function useObjectSync(
               // Position/rotation-only change — lightweight update
               existing.set({ left: stickyData.x, top: stickyData.y, angle: stickyData.rotation });
               existing.setCoords();
-            } else {
-              // Content changed — must recreate the Group (Fabric limitation)
-              const wasActive = canvas.getActiveObject() === existing;
-              canvas.remove(existing);
-              const group = createStickyGroup(stickyData);
-              setBoardId(group, id);
-              setStickyContent(group, stickyData.text, stickyData.color);
-              canvas.add(group);
-              group.setCoords();
-              if (wasActive) {
-                canvas.setActiveObject(group);
+            } else if (existing instanceof Group) {
+              // Content changed — update sub-objects in-place instead of
+              // destroying and recreating the Group.  Sticky notes have
+              // fixed dimensions (lockScalingX/Y) so mutating children
+              // doesn't require a Group layout recalculation.
+              const children = existing.getObjects();
+              const bgRect = children.find((o) => o instanceof Rect) as Rect | undefined;
+              const textbox = children.find((o) => o instanceof Textbox) as Textbox | undefined;
+
+              if (bgRect && stickyData.color !== prev?.color) {
+                bgRect.set('fill', stickyData.color);
               }
+              if (textbox && stickyData.text !== prev?.text) {
+                textbox.set('text', stickyData.text || 'Type here...');
+              }
+
+              existing.set({ left: stickyData.x, top: stickyData.y, angle: stickyData.rotation });
+              existing.dirty = true;
+              existing.setCoords();
+              setStickyContent(existing, stickyData.text, stickyData.color);
             }
             break;
           }

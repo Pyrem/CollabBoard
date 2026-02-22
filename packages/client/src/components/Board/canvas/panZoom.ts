@@ -9,8 +9,26 @@ import type { CursorPosition } from '@collabboard/shared';
 import type { ViewportState } from '../Canvas.js';
 
 /**
- * Attach pan (alt/middle-click drag) and zoom (scroll wheel) listeners.
- * Returns a cleanup function that removes all listeners.
+ * Attach pan and zoom behaviour to a Fabric canvas.
+ *
+ * **Pan** — activated by holding `Alt` or pressing the middle mouse button.
+ * While active, `canvas.selection` is disabled so the drag moves the viewport
+ * instead of rubber-banding objects. Released on `mouse:up`.
+ *
+ * **Zoom** — scroll-wheel events scale the canvas via `zoomToPoint`, clamped
+ * to the range [0.1, 5]. The zoom factor follows an exponential curve
+ * (`0.999 ** deltaY`) for smooth trackpad and mouse-wheel behaviour.
+ *
+ * **Cursor broadcast** — every `mouse:move` event converts the pointer to
+ * canvas-space via `getScenePoint` and passes it to `onCursorMoveRef` for
+ * the awareness protocol. The `heavy` flag is set when an `ActiveSelection`
+ * is being dragged, signalling {@link useCursors} to use a longer throttle
+ * interval.
+ *
+ * @param canvas - The Fabric canvas to attach listeners to.
+ * @param onCursorMoveRef - Ref to the cursor broadcast callback.
+ * @param onViewportChangeRef - Ref to the viewport-state callback (zoom + pan offsets).
+ * @returns A cleanup function that removes all four event listeners.
  */
 export function attachPanZoom(
   canvas: FabricCanvas,

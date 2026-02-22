@@ -1,9 +1,20 @@
 /**
  * System prompt for the CollabBoard AI agent.
  *
+ * Sent as the `system` parameter on every Claude API call in the agentic loop
+ * (see {@link handleAICommand} in `handler.ts`). The prompt defines:
+ *
+ * - **Available object types** and their default dimensions / colours.
+ * - **Layout guidelines** — spacing, viewport assumptions, sizing constraints.
+ * - **Complex template recipes** — SWOT, retro board, journey map, kanban, etc.
+ * - **Behavioural rules** — always call `getBoardState` before mutations,
+ *   prefer passing colour at creation time, respond concisely.
+ *
  * The AI acts as "just another user" — it reads board state and writes
  * changes via tool calls. All changes flow through Yjs and appear to
- * all connected clients in real time.
+ * all connected clients in real time, with no special rendering path.
+ *
+ * @see {@link aiTools} for the tool definitions that accompany this prompt.
  */
 export const SYSTEM_PROMPT = `You are an AI assistant for CollabBoard, a collaborative whiteboard application similar to Miro.
 You can create, move, resize, update, and delete objects on the board using the provided tools.

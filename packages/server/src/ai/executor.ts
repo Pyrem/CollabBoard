@@ -30,7 +30,17 @@ import {
 } from '@collabboard/shared';
 import type { SnapPosition } from '@collabboard/shared';
 
-/** Result of executing a single tool call. */
+/**
+ * Result of executing a single AI tool call.
+ *
+ * Returned by {@link executeTool} and serialised as JSON inside the
+ * `tool_result` message sent back to Claude in the agentic loop.
+ *
+ * @property success - `true` if the operation completed without error.
+ * @property message - Human-readable summary (also shown to the AI).
+ * @property data - Optional payload — e.g. `{ id }` for create operations
+ *   or the full board state array for `getBoardState`.
+ */
 export interface ToolResult {
   success: boolean;
   message: string;
@@ -38,11 +48,31 @@ export interface ToolResult {
 }
 
 /**
- * Execute a single AI tool call against a Yjs document.
+ * Execute a single AI tool call against a live Yjs document.
  *
- * Tool names match the spec exactly (camelCase):
- *   getBoardState, createStickyNote, createShape, createText, createFrame,
- *   createConnector, moveObject, resizeObject, updateText, changeColor
+ * Dispatches on `toolName` via a `switch` statement — each case reads from
+ * and/or writes to the `objects` `Y.Map` on `doc`. Create operations enforce
+ * {@link MAX_OBJECTS_PER_BOARD} and return the new object's UUID in
+ * `data.id`. Mutation operations (`moveObject`, `resizeObject`, etc.) stamp
+ * `lastModifiedBy` and `lastModifiedAt` on every write.
+ *
+ * `moveObject` is wrapped in a `doc.transact()` so that moving a frame also
+ * moves its children atomically.
+ *
+ * Tool names match the Anthropic tool definitions in `tools.ts` exactly:
+ *   `getBoardState`, `createStickyNote`, `createShape`, `createText`,
+ *   `createFrame`, `createConnector`, `moveObject`, `resizeObject`,
+ *   `updateText`, `changeColor`.
+ *
+ * @param toolName - Exact camelCase tool name from the Claude `tool_use` block.
+ * @param input - Key/value bag of tool arguments (parsed by Anthropic from
+ *   the JSON schema).
+ * @param doc - The live `Y.Doc` obtained via {@link getDocument}.
+ * @param userId - Firebase UID recorded as `lastModifiedBy` on every write.
+ * @returns A {@link ToolResult} indicating success/failure and a human-readable
+ *   summary message.
+ *
+ * @see {@link aiTools} for the JSON Schema definitions sent to Claude.
  */
 export function executeTool(
   toolName: string,

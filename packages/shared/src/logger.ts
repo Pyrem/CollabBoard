@@ -41,7 +41,20 @@ declare const console: {
   error(...args: unknown[]): void;
 };
 
-/** Read the debug config string from localStorage (browser) or env (Node). */
+/**
+ * Read the debug configuration string from the runtime environment.
+ *
+ * Resolution order:
+ * 1. `localStorage.getItem('collabboard:debug')` — browser.
+ * 2. `process.env.COLLABBOARD_DEBUG` — Node.js.
+ * 3. `''` (empty string) — debug output is ON by default.
+ *
+ * The function is intentionally defensive (`try/catch`) because
+ * `localStorage` may throw in SSR contexts and `process` may be
+ * undefined in browser bundles.
+ *
+ * @returns The raw config string, or `''` if nothing is set.
+ */
 function getDebugConfig(): string {
   try {
     if (typeof localStorage !== 'undefined' && localStorage) {
@@ -68,11 +81,21 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 };
 
 /**
- * All levels including debug are ON by default.
+ * Determine whether `debug`-level output is suppressed for `namespace`.
  *
- * To suppress debug output, set `localStorage.setItem('collabboard:debug', 'false')`
- * in the browser, or `COLLABBOARD_DEBUG=false` on the server.
- * To restrict to specific namespaces, set e.g. `'throttle,cursor'`.
+ * The debug config (see {@link getDebugConfig}) is interpreted as follows:
+ *
+ * | Config value            | Effect                                    |
+ * |-------------------------|-------------------------------------------|
+ * | `''` (empty / unset)    | Debug ON for all namespaces (default).    |
+ * | `'false'` / `'0'`       | Debug OFF globally.                       |
+ * | `'true'` / `'1'` / `'*'`| Debug ON for all namespaces.              |
+ * | `'throttle,cursor'`      | Debug ON only for listed namespaces.      |
+ *
+ * `info`, `warn`, and `error` are **never** suppressed.
+ *
+ * @param namespace - The logger namespace to check.
+ * @returns `true` if debug output should be suppressed for this namespace.
  */
 function isDebugSuppressed(namespace: string): boolean {
   const config = getDebugConfig();
@@ -84,6 +107,7 @@ function isDebugSuppressed(namespace: string): boolean {
   return !namespaces.includes(namespace);
 }
 
+/** Return `true` if a message at `level` for `namespace` should be emitted. */
 function shouldLog(level: LogLevel, namespace: string): boolean {
   // info/warn/error are always on
   if (LEVEL_PRIORITY[level] >= LEVEL_PRIORITY['info']) {
@@ -93,10 +117,12 @@ function shouldLog(level: LogLevel, namespace: string): boolean {
   return !isDebugSuppressed(namespace);
 }
 
+/** Wrap `namespace` in square brackets for log output (e.g. `[sync]`). */
 function formatPrefix(namespace: string): string {
   return `[${namespace}]`;
 }
 
+/** Create a closure that conditionally logs at the given level and namespace. */
 function createLogFn(
   level: LogLevel,
   namespace: string,
@@ -114,10 +140,21 @@ function createLogFn(
 }
 
 /**
- * Create a namespaced logger instance.
+ * Create a namespaced {@link Logger} instance.
  *
- * @param namespace - Category for log output (e.g. 'throttle', 'batch', 'sync').
- * @returns Logger with `debug`, `info`, `warn`, `error` methods.
+ * Each method (`debug`, `info`, `warn`, `error`) prefixes output with
+ * `[namespace]` and optionally appends a structured data object.
+ * Debug-level output respects the runtime configuration described in
+ * {@link isDebugSuppressed}.
+ *
+ * @param namespace - Short category tag for log output (e.g. `'throttle'`,
+ *   `'batch'`, `'sync'`, `'containment'`).
+ * @returns A `Logger` instance with four severity methods.
+ *
+ * @example
+ * const log = logger('sync');
+ * log.debug('object updated', { id: '...', field: 'x' });
+ * log.warn('latency spike', { ms: 340 });
  */
 export function logger(namespace: string): Logger {
   return {

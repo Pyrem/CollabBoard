@@ -2,25 +2,30 @@ import 'dotenv/config';
 import { createServer } from 'node:http';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { Server } from '@hocuspocus/server';
 import { Database } from '@hocuspocus/extension-database';
 import { WebSocketServer } from 'ws';
-import { onAuthenticate } from './hocuspocus/onAuthenticate.js';
+import { createOnAuthenticate } from './hocuspocus/onAuthenticate.js';
 import { onChange } from './hocuspocus/onChange.js';
 import { loadDocument, storeDocument, setupDatabase } from './hocuspocus/database.js';
 import { aiCommandHandler } from './ai/handler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
+import { ConnectionLimiter } from './middleware/connectionLimiter.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '3001', 10);
 const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? 'http://localhost:5173';
+
+// Connection limiter — enforces per-IP and per-user WebSocket limits
+const connectionLimiter = new ConnectionLimiter();
 
 // Initialize SQLite database for persistence
 const db = setupDatabase();
 
 // Hocuspocus server (no standalone listen — we handle upgrades manually)
 const hocuspocus = Server.configure({
-  onAuthenticate,
+  onAuthenticate: createOnAuthenticate(connectionLimiter),
   onChange,
   extensions: [
     new Database({
@@ -35,6 +40,7 @@ const hocuspocus = Server.configure({
 // Express HTTP server (AI endpoint + health)
 const app: ReturnType<typeof express> = express();
 
+app.use(helmet());
 app.use(
   cors({
     origin: CORS_ORIGIN,
@@ -67,6 +73,11 @@ app.get('/api/health', (_req, res) => {
     checks,
     documentCount,
     connectionCount,
+    connectionLimits: {
+      totalTracked: connectionLimiter.totalConnections,
+      uniqueIps: connectionLimiter.trackedIpCount,
+      uniqueUsers: connectionLimiter.trackedUserCount,
+    },
   });
 });
 
@@ -76,9 +87,31 @@ app.post('/api/ai-command', createRateLimiter(), authMiddleware, aiCommandHandle
 const httpServer = createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
-// Handle WebSocket upgrade — hand off to Hocuspocus
+// Handle WebSocket upgrade — check per-IP limit, then hand off to Hocuspocus
 httpServer.on('upgrade', (request, socket, head) => {
+  const ip =
+    (request.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
+    request.socket.remoteAddress ??
+    'unknown';
+
+  const token = connectionLimiter.addConnection(ip);
+
+  if (token === null) {
+    console.warn(`[SERVER] WebSocket rejected: IP connection limit reached for ${ip}`);
+    socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
   wss.handleUpgrade(request, socket, head, (ws) => {
+    // Attach the limiter token to the request so onAuthenticate can access it
+    (request as unknown as Record<string, unknown>)['__connectionToken'] = token;
+    (request as unknown as Record<string, unknown>)['__connectionIp'] = ip;
+
+    ws.on('close', () => {
+      connectionLimiter.removeConnection(token);
+    });
+
     hocuspocus.handleConnection(ws, request);
   });
 });
@@ -90,6 +123,26 @@ httpServer.listen(PORT, () => {
 // ── Graceful shutdown ────────────────────────────────────────────────
 let shuttingDown = false;
 
+/**
+ * Gracefully shut down the server in response to a POSIX signal.
+ *
+ * Execution order:
+ * 1. Stop the HTTP server from accepting new connections.
+ * 2. Close the raw WebSocket server.
+ * 3. Call `hocuspocus.destroy()` which flushes all in-memory Yjs documents
+ *    to SQLite via the `Database` extension and disconnects clients.
+ * 4. Close the SQLite database handle.
+ * 5. Exit with code 0.
+ *
+ * A 10-second hard-exit timer (via `setTimeout(...).unref()`) guarantees the
+ * process terminates even if a step hangs.
+ *
+ * The `shuttingDown` flag ensures the function is idempotent — only the
+ * first signal triggers the sequence.
+ *
+ * @param signal - Name of the signal that triggered the shutdown
+ *   (e.g. `"SIGTERM"`, `"SIGINT"`).
+ */
 function shutdown(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
