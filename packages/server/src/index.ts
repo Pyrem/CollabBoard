@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createServer } from 'node:http';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { Server } from '@hocuspocus/server';
 import { Database } from '@hocuspocus/extension-database';
 import { WebSocketServer } from 'ws';
@@ -35,6 +36,7 @@ const hocuspocus = Server.configure({
 // Express HTTP server (AI endpoint + health)
 const app: ReturnType<typeof express> = express();
 
+app.use(helmet());
 app.use(
   cors({
     origin: CORS_ORIGIN,
