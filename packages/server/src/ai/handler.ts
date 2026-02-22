@@ -137,7 +137,7 @@ const handleAICommand = traceable(async function handleAICommand(
     // Agentic loop: call Claude, execute tools, feed results back
     while (toolCallCount < AI_MAX_TOOL_CALLS_PER_REQUEST) {
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools: aiTools,
