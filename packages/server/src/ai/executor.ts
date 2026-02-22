@@ -246,6 +246,9 @@ export function executeTool(
       const objectId = input['objectId'] as string;
       const existing = objectsMap.get(objectId) as BoardObject | undefined;
       if (!existing) return { success: false, message: `Object "${objectId}" not found` };
+      if (existing.type === 'sticky') {
+        return { success: false, message: `Sticky notes have a fixed size of 200x200px and cannot be resized` };
+      }
       objectsMap.set(objectId, {
         ...existing,
         width: input['width'] as number,

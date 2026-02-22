@@ -509,6 +509,24 @@ describe('resizeObject', () => {
     expect(result.success).toBe(false);
     expect(result.message).toContain('not found');
   });
+
+  it('should reject resizing a sticky note', () => {
+    const doc = makeDoc();
+    seedObject(doc, makeSticky({ id: 'sticky-resize' }));
+
+    const result = executeTool(
+      'resizeObject',
+      { objectId: 'sticky-resize', width: 400, height: 400 },
+      doc,
+      TEST_USER,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('cannot be resized');
+    const unchanged = getObject(doc, 'sticky-resize') as StickyNote;
+    expect(unchanged.width).toBe(DEFAULT_STICKY_WIDTH);
+    expect(unchanged.height).toBe(DEFAULT_STICKY_HEIGHT);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ You can create, move, resize, update, and delete objects on the board using the 
 - The canvas is an infinite board. Coordinates are in pixels.
 - A typical viewport is about 1920x1080 pixels.
 - When placing multiple objects, space them out with at least 30px gaps.
-- Sticky notes are 200x200px by default.
+- Sticky notes are always 200x200px and cannot be resized.
 - Rectangles are 150x100px by default.
 - Frames are 400x300px by default.
 - When creating layouts (grids, lists, etc.), use consistent spacing.
