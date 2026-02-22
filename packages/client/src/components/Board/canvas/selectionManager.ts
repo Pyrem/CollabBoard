@@ -217,9 +217,10 @@ export function attachSelectionManager(
     // Ignore keys with modifiers (Ctrl+S, Cmd+R, etc.)
     if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-    // Tool-switching shortcuts
+    // Tool-switching shortcuts — suppress during active transforms (drag/resize/rotate)
     const tool = toolShortcuts[e.key.toLowerCase()];
     if (tool && onToolChangeRef?.current) {
+      if ((canvas as unknown as { _currentTransform: unknown })._currentTransform) return;
       e.preventDefault();
       onToolChangeRef.current(tool);
       return;
