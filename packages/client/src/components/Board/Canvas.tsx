@@ -167,7 +167,7 @@ export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange,
 
     // Delegate to submodules
     const cleanupPanZoom = attachPanZoom(canvas, onCursorMoveRef, onViewportChangeRef);
-    const cleanupSelection = attachSelectionManager(canvas, boardRef, onSelectionChangeRef, editingStickyRef);
+    const cleanupSelection = attachSelectionManager(canvas, boardRef, onSelectionChangeRef, editingStickyRef, onToolChangeRef);
     const cleanupModifications = attachLocalModifications(
       canvas, boardRef, userCountRef,
       isRemoteUpdateRef, isLocalUpdateRef, localUpdateIdsRef, lastObjectSyncRef,

@@ -155,6 +155,7 @@ export function attachSelectionManager(
   boardRef: RefObject<ReturnType<typeof useBoard>>,
   onSelectionChangeRef: RefObject<(selected: SelectedObject | null) => void>,
   editingStickyRef: MutableRefObject<EditingState | null>,
+  onToolChangeRef?: RefObject<(tool: string) => void>,
 ): () => void {
   const notifySelection = (): void => {
     const active = canvas.getActiveObject();
@@ -194,17 +195,38 @@ export function attachSelectionManager(
   canvas.on('selection:updated', onSelectionCreatedOrUpdated);
   canvas.on('selection:cleared', notifySelection);
 
+  /** Map of single-key shortcuts to tool identifiers. */
+  const toolShortcuts: Record<string, string> = {
+    v: 'select',
+    s: 'sticky',
+    r: 'rectangle',
+    t: 'text',
+    f: 'frame',
+    c: 'connector',
+  };
+
   const handleKeyDown = (e: KeyboardEvent): void => {
-    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
     const tag = (e.target as HTMLElement).tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     if (editingStickyRef.current) return;
 
+    // Don't fire shortcuts when a Fabric text is being edited inline
     const active = canvas.getActiveObject();
-    if (!active) return;
+    if (active && 'isEditing' in active && (active as unknown as { isEditing: boolean }).isEditing) return;
 
-    // Don't delete a text element while it's being edited inline
-    if ('isEditing' in active && (active as unknown as { isEditing: boolean }).isEditing) return;
+    // Ignore keys with modifiers (Ctrl+S, Cmd+R, etc.)
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // Tool-switching shortcuts
+    const tool = toolShortcuts[e.key.toLowerCase()];
+    if (tool && onToolChangeRef?.current) {
+      e.preventDefault();
+      onToolChangeRef.current(tool);
+      return;
+    }
+
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+    if (!active) return;
 
     e.preventDefault();
 
