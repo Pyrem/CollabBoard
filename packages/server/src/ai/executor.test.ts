@@ -20,13 +20,15 @@
 
 import { describe, expect, it } from 'vitest';
 import { Doc } from 'yjs';
-import type { BoardObject, StickyNote, RectangleShape, TextElement, Frame, Connector } from '@collabboard/shared';
+import type { BoardObject, StickyNote, RectangleShape, CircleShape, TextElement, Frame, Connector } from '@collabboard/shared';
 import {
   DEFAULT_STICKY_COLOR,
   DEFAULT_STICKY_WIDTH,
   DEFAULT_STICKY_HEIGHT,
   DEFAULT_RECT_WIDTH,
   DEFAULT_RECT_HEIGHT,
+  DEFAULT_CIRCLE_WIDTH,
+  DEFAULT_CIRCLE_HEIGHT,
   DEFAULT_FILL,
   DEFAULT_STROKE,
   DEFAULT_FRAME_WIDTH,
@@ -87,6 +89,25 @@ function makeRect(overrides: Partial<RectangleShape> & { id: string }): Rectangl
     y: 0,
     width: DEFAULT_RECT_WIDTH,
     height: DEFAULT_RECT_HEIGHT,
+    rotation: 0,
+    zIndex: 0,
+    lastModifiedBy: TEST_USER,
+    lastModifiedAt: Date.now(),
+    parentId: null,
+    fill: DEFAULT_FILL,
+    stroke: DEFAULT_STROKE,
+    ...overrides,
+  };
+}
+
+/** Helper: build a minimal circle for seeding. */
+function makeCircle(overrides: Partial<CircleShape> & { id: string }): CircleShape {
+  return {
+    type: 'circle',
+    x: 0,
+    y: 0,
+    width: DEFAULT_CIRCLE_WIDTH,
+    height: DEFAULT_CIRCLE_HEIGHT,
     rotation: 0,
     zIndex: 0,
     lastModifiedBy: TEST_USER,
@@ -279,7 +300,28 @@ describe('createShape', () => {
     expect(created.stroke).toBe(DEFAULT_STROKE);
   });
 
-  it('should reject unsupported shape types', () => {
+  it('should create a circle with provided dimensions and color', () => {
+    const doc = makeDoc();
+    const result = executeTool(
+      'createShape',
+      { type: 'circle', x: 50, y: 75, width: 120, height: 120, color: '#0000FF' },
+      doc,
+      TEST_USER,
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as { id: string };
+    const created = getObject(doc, data.id) as CircleShape;
+    expect(created.type).toBe('circle');
+    expect(created.x).toBe(50);
+    expect(created.y).toBe(75);
+    expect(created.width).toBe(120);
+    expect(created.height).toBe(120);
+    expect(created.fill).toBe('#0000FF');
+    expect(created.stroke).toBe(DEFAULT_STROKE);
+  });
+
+  it('should use default dimensions for circle when not specified', () => {
     const doc = makeDoc();
     const result = executeTool(
       'createShape',
@@ -288,9 +330,24 @@ describe('createShape', () => {
       TEST_USER,
     );
 
+    const data = result.data as { id: string };
+    const created = getObject(doc, data.id) as CircleShape;
+    expect(created.width).toBe(DEFAULT_CIRCLE_WIDTH);
+    expect(created.height).toBe(DEFAULT_CIRCLE_HEIGHT);
+    expect(created.fill).toBe(DEFAULT_FILL);
+  });
+
+  it('should reject unsupported shape types', () => {
+    const doc = makeDoc();
+    const result = executeTool(
+      'createShape',
+      { type: 'triangle', x: 0, y: 0 },
+      doc,
+      TEST_USER,
+    );
+
     expect(result.success).toBe(false);
     expect(result.message).toContain('Unsupported shape type');
-    expect(result.message).toContain('circle');
     expect(objectCount(doc)).toBe(0);
   });
 });
@@ -706,6 +763,22 @@ describe('changeColor', () => {
     expect(result.success).toBe(true);
     const updated = getObject(doc, 'rect-1') as RectangleShape;
     expect(updated.fill).toBe('#FF0000');
+  });
+
+  it('should change fill color of a circle', () => {
+    const doc = makeDoc();
+    seedObject(doc, makeCircle({ id: 'circle-1', fill: '#FFFFFF' }));
+
+    const result = executeTool(
+      'changeColor',
+      { objectId: 'circle-1', color: '#FF00FF' },
+      doc,
+      TEST_USER,
+    );
+
+    expect(result.success).toBe(true);
+    const updated = getObject(doc, 'circle-1') as CircleShape;
+    expect(updated.fill).toBe('#FF00FF');
   });
 
   it('should change stroke color of a connector', () => {

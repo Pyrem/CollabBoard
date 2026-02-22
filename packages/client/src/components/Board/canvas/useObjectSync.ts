@@ -3,11 +3,12 @@ import {
   Canvas as FabricCanvas,
   Group,
   Rect,
+  Ellipse,
   Textbox,
   Line,
 } from 'fabric';
 import type * as Y from 'yjs';
-import type { BoardObject, StickyNote, RectangleShape, TextElement, Frame, Connector } from '@collabboard/shared';
+import type { BoardObject, StickyNote, RectangleShape, CircleShape, TextElement, Frame, Connector } from '@collabboard/shared';
 import { validateBoardObject } from '@collabboard/shared';
 import {
   getBoardId,
@@ -17,6 +18,8 @@ import {
   createStickyGroup,
   createRectFromData,
   updateRectFromData,
+  createCircleFromData,
+  updateCircleFromData,
   createTextFromData,
   updateTextFromData,
   getFrameContent,
@@ -203,9 +206,12 @@ export function useObjectSync(
             }
             break;
           }
-          // Future object types go here:
-          // case 'circle': { ... break; }
-          // case 'line': { ... break; }
+          case 'circle': {
+            if (existing instanceof Ellipse) {
+              updateCircleFromData(existing, data as CircleShape);
+            }
+            break;
+          }
           default:
             // Unhandled type — log and skip so we don't crash on unknown data
             console.warn(`[useObjectSync] Unhandled object type for update: "${data.type}"`);
@@ -274,9 +280,12 @@ export function useObjectSync(
             line.setCoords();
             break;
           }
-          // Future object types go here:
-          // case 'circle': { ... break; }
-          // case 'line': { ... break; }
+          case 'circle': {
+            const ellipse = createCircleFromData(data as CircleShape);
+            canvas.add(ellipse);
+            ellipse.setCoords();
+            break;
+          }
           default:
             console.warn(`[useObjectSync] Unhandled object type for create: "${data.type}"`);
         }

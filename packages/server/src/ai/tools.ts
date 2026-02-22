@@ -52,19 +52,19 @@ export const aiTools: Anthropic.Tool[] = [
   {
     name: 'createShape',
     description:
-      'Create a shape on the board. Currently supports rectangle. Use for visual containers, dividers, or decorative elements.',
+      'Create a shape on the board. Supports rectangles and circles. Use for visual containers, dividers, or decorative elements.',
     input_schema: {
       type: 'object' as const,
       properties: {
         type: {
           type: 'string',
-          enum: ['rectangle'],
-          description: 'Shape type. Currently only "rectangle" is supported.',
+          enum: ['rectangle', 'circle'],
+          description: 'Shape type: "rectangle" or "circle".',
         },
         x: { type: 'number', description: 'X position on the canvas' },
         y: { type: 'number', description: 'Y position on the canvas' },
-        width: { type: 'number', description: 'Width in pixels (default 150)' },
-        height: { type: 'number', description: 'Height in pixels (default 100)' },
+        width: { type: 'number', description: 'Width in pixels (default 150 for rectangle, 100 for circle)' },
+        height: { type: 'number', description: 'Height in pixels (default 100 for rectangle, 100 for circle)' },
         color: { type: 'string', description: 'Fill color as hex string (default #4CAF50)' },
       },
       required: ['type', 'x', 'y'],

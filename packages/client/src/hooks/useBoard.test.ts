@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
-import type { BoardObject, StickyNote, RectangleShape } from '@collabboard/shared';
+import type { BoardObject, StickyNote, RectangleShape, CircleShape } from '@collabboard/shared';
 import {
   DEFAULT_STICKY_COLOR,
   DEFAULT_STICKY_WIDTH,
   DEFAULT_STICKY_HEIGHT,
   DEFAULT_RECT_WIDTH,
   DEFAULT_RECT_HEIGHT,
+  DEFAULT_CIRCLE_WIDTH,
+  DEFAULT_CIRCLE_HEIGHT,
   DEFAULT_FILL,
   DEFAULT_STROKE,
 } from '@collabboard/shared';
@@ -71,6 +73,33 @@ function createRectangle(
     stroke: DEFAULT_STROKE,
   };
   map.set(id, rect);
+  return id;
+}
+
+function createCircle(
+  map: Y.Map<unknown>,
+  x: number,
+  y: number,
+  width = DEFAULT_CIRCLE_WIDTH,
+  height = DEFAULT_CIRCLE_HEIGHT,
+): string {
+  const id = crypto.randomUUID();
+  const circle: CircleShape = {
+    id,
+    type: 'circle',
+    x,
+    y,
+    width,
+    height,
+    rotation: 0,
+    zIndex: map.size,
+    lastModifiedBy: userId,
+    lastModifiedAt: Date.now(),
+    parentId: null,
+    fill: DEFAULT_FILL,
+    stroke: DEFAULT_STROKE,
+  };
+  map.set(id, circle);
   return id;
 }
 
@@ -197,6 +226,30 @@ describe('Board CRUD operations', () => {
 
       expect(obj.width).toBe(500);
       expect(obj.height).toBe(300);
+    });
+  });
+
+  describe('createCircle', () => {
+    it('creates a circle with correct defaults', () => {
+      const id = createCircle(objectsMap, 300, 400);
+      const obj = objectsMap.get(id) as CircleShape;
+
+      expect(obj).toBeDefined();
+      expect(obj.type).toBe('circle');
+      expect(obj.x).toBe(300);
+      expect(obj.y).toBe(400);
+      expect(obj.width).toBe(DEFAULT_CIRCLE_WIDTH);
+      expect(obj.height).toBe(DEFAULT_CIRCLE_HEIGHT);
+      expect(obj.fill).toBe(DEFAULT_FILL);
+      expect(obj.stroke).toBe(DEFAULT_STROKE);
+    });
+
+    it('creates a circle with custom dimensions', () => {
+      const id = createCircle(objectsMap, 0, 0, 150, 150);
+      const obj = objectsMap.get(id) as CircleShape;
+
+      expect(obj.width).toBe(150);
+      expect(obj.height).toBe(150);
     });
   });
 

@@ -1,12 +1,13 @@
 import {
   Canvas as FabricCanvas,
   Rect,
+  Ellipse,
   Textbox,
   Group,
   Line,
   type FabricObject,
 } from 'fabric';
-import type { StickyNote, RectangleShape, TextElement, Frame, Connector } from '@collabboard/shared';
+import type { StickyNote, RectangleShape, CircleShape, TextElement, Frame, Connector } from '@collabboard/shared';
 import { DEFAULT_FILL, DEFAULT_STROKE, DEFAULT_CONNECTOR_STROKE, DEFAULT_CONNECTOR_STROKE_WIDTH, CONNECTOR_ARROW_SIZE } from '@collabboard/shared';
 
 /**
@@ -160,6 +161,53 @@ export function updateRectFromData(existing: Rect, rectData: RectangleShape): vo
   });
   existing.set('fill', rectData.fill || DEFAULT_FILL);
   existing.set('stroke', rectData.stroke || DEFAULT_STROKE);
+  existing.setCoords();
+}
+
+/**
+ * Create a Fabric `Ellipse` from a validated {@link CircleShape}.
+ *
+ * Uses `Ellipse` rather than `Circle` so that non-square width/height
+ * values render correctly (true ellipses). The board ID is set
+ * automatically via {@link setBoardId}.
+ *
+ * @param circleData - Validated circle from the Yjs map.
+ * @returns A positioned `Ellipse` ready to be added to the canvas.
+ */
+export function createCircleFromData(circleData: CircleShape): Ellipse {
+  const ellipse = new Ellipse({
+    left: circleData.x,
+    top: circleData.y,
+    rx: circleData.width / 2,
+    ry: circleData.height / 2,
+    angle: circleData.rotation,
+    strokeWidth: 2,
+  });
+  ellipse.set('fill', circleData.fill || DEFAULT_FILL);
+  ellipse.set('stroke', circleData.stroke || DEFAULT_STROKE);
+  ellipse.dirty = true;
+  setBoardId(ellipse, circleData.id);
+  return ellipse;
+}
+
+/**
+ * Apply position/size/style/rotation changes to an existing Fabric `Ellipse` in-place.
+ *
+ * Resets `scaleX`/`scaleY` to 1 and writes actual dimensions so Fabric's
+ * coordinate cache stays consistent after remote updates.
+ */
+export function updateCircleFromData(existing: Ellipse, circleData: CircleShape): void {
+  existing.set({
+    left: circleData.x,
+    top: circleData.y,
+    rx: circleData.width / 2,
+    ry: circleData.height / 2,
+    angle: circleData.rotation,
+    scaleX: 1,
+    scaleY: 1,
+  });
+  existing.set('fill', circleData.fill || DEFAULT_FILL);
+  existing.set('stroke', circleData.stroke || DEFAULT_STROKE);
   existing.setCoords();
 }
 

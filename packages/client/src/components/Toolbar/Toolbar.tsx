@@ -24,7 +24,7 @@ interface ToolbarProps {
 }
 
 /** Union of all tool identifiers used by the toolbar buttons. */
-type Tool = 'select' | 'sticky' | 'rectangle' | 'text' | 'frame' | 'connector';
+type Tool = 'select' | 'sticky' | 'rectangle' | 'circle' | 'text' | 'frame' | 'connector';
 
 /** Available font-size presets for text elements, ordered smallest → largest. */
 const FONT_SIZES = [14, 20, 28, 36, 48] as const;
@@ -79,6 +79,14 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
         undefined,
         selectedColor,
       );
+    } else if (tool === 'circle') {
+      result = board.createCircle(
+        center.x - 50,
+        center.y - 50,
+        undefined,
+        undefined,
+        selectedColor,
+      );
     } else if (tool === 'text') {
       result = board.createText(
         center.x - 100,
@@ -112,6 +120,8 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
         board.updateObject(selectedObject.id, { color } as Partial<BoardObject>);
       } else if (selectedObject.type === 'rectangle') {
         board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
+      } else if (selectedObject.type === 'circle') {
+        board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
       } else if (selectedObject.type === 'text') {
         board.updateObject(selectedObject.id, { fill: color } as Partial<BoardObject>);
       } else if (selectedObject.type === 'frame') {
@@ -144,6 +154,13 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
         title="Rectangle"
       >
         Rect
+      </button>
+      <button
+        className={`${toolBtnBase} ${activeTool === 'circle' ? toolBtnActive : ''}`}
+        onClick={() => handleToolClick('circle')}
+        title="Circle"
+      >
+        Circle
       </button>
       <button
         className={`${toolBtnBase} ${activeTool === 'text' ? toolBtnActive : ''}`}
