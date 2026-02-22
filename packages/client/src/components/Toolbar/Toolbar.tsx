@@ -127,42 +127,42 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
       <button
         className={`${toolBtnBase} ${activeTool === 'select' ? toolBtnActive : ''}`}
         onClick={() => onToolChange('select')}
-        title="Select (V)"
+        title="Select"
       >
         Select
       </button>
       <button
         className={`${toolBtnBase} ${activeTool === 'sticky' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('sticky')}
-        title="Sticky Note (S)"
+        title="Sticky Note"
       >
         Sticky
       </button>
       <button
         className={`${toolBtnBase} ${activeTool === 'rectangle' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('rectangle')}
-        title="Rectangle (R)"
+        title="Rectangle"
       >
         Rect
       </button>
       <button
         className={`${toolBtnBase} ${activeTool === 'text' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('text')}
-        title="Text (T)"
+        title="Text"
       >
         Text
       </button>
       <button
         className={`${toolBtnBase} ${activeTool === 'frame' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('frame')}
-        title="Frame (F)"
+        title="Frame"
       >
         Frame
       </button>
       <button
         className={`${toolBtnBase} ${activeTool === 'connector' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('connector')}
-        title="Connector (C)"
+        title="Connector"
       >
         Connect
       </button>
