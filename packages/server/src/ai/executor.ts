@@ -4,6 +4,7 @@ import type {
   BoardObject,
   StickyNote,
   RectangleShape,
+  CircleShape,
   Frame,
   Connector,
   TextElement,
@@ -14,6 +15,8 @@ import {
   DEFAULT_STICKY_HEIGHT,
   DEFAULT_RECT_WIDTH,
   DEFAULT_RECT_HEIGHT,
+  DEFAULT_CIRCLE_WIDTH,
+  DEFAULT_CIRCLE_HEIGHT,
   DEFAULT_FILL,
   DEFAULT_STROKE,
   DEFAULT_FRAME_WIDTH,
@@ -125,28 +128,51 @@ export function executeTool(
         return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
       }
       const shapeType = input['type'] as string;
-      if (shapeType !== 'rectangle') {
-        return { success: false, message: `Unsupported shape type: "${shapeType}". Currently only "rectangle" is supported.` };
+      if (shapeType !== 'rectangle' && shapeType !== 'circle') {
+        return { success: false, message: `Unsupported shape type: "${shapeType}". Supported types: "rectangle", "circle".` };
       }
       const id = uuidv4();
       const color = (input['color'] as string | undefined) ?? DEFAULT_FILL;
-      const rect: RectangleShape = {
-        id,
-        type: 'rectangle',
-        x: input['x'] as number,
-        y: input['y'] as number,
-        width: (input['width'] as number | undefined) ?? DEFAULT_RECT_WIDTH,
-        height: (input['height'] as number | undefined) ?? DEFAULT_RECT_HEIGHT,
-        rotation: 0,
-        zIndex: objectsMap.size,
-        lastModifiedBy: userId,
-        lastModifiedAt: Date.now(),
-        parentId: null,
-        fill: color,
-        stroke: DEFAULT_STROKE,
-      };
-      objectsMap.set(id, rect);
-      return { success: true, message: `Created rectangle at (${String(rect.x)}, ${String(rect.y)})`, data: { id } };
+      const x = input['x'] as number;
+      const y = input['y'] as number;
+
+      if (shapeType === 'rectangle') {
+        const rect: RectangleShape = {
+          id,
+          type: 'rectangle',
+          x,
+          y,
+          width: (input['width'] as number | undefined) ?? DEFAULT_RECT_WIDTH,
+          height: (input['height'] as number | undefined) ?? DEFAULT_RECT_HEIGHT,
+          rotation: 0,
+          zIndex: objectsMap.size,
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+          parentId: null,
+          fill: color,
+          stroke: DEFAULT_STROKE,
+        };
+        objectsMap.set(id, rect);
+        return { success: true, message: `Created rectangle at (${String(x)}, ${String(y)})`, data: { id } };
+      } else {
+        const circle: CircleShape = {
+          id,
+          type: 'circle',
+          x,
+          y,
+          width: (input['width'] as number | undefined) ?? DEFAULT_CIRCLE_WIDTH,
+          height: (input['height'] as number | undefined) ?? DEFAULT_CIRCLE_HEIGHT,
+          rotation: 0,
+          zIndex: objectsMap.size,
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+          parentId: null,
+          fill: color,
+          stroke: DEFAULT_STROKE,
+        };
+        objectsMap.set(id, circle);
+        return { success: true, message: `Created circle at (${String(x)}, ${String(y)})`, data: { id } };
+      }
     }
 
     case 'createFrame': {
@@ -326,6 +352,9 @@ export function executeTool(
           objectsMap.set(objectId, { ...existing, color, lastModifiedBy: userId, lastModifiedAt: Date.now() });
           break;
         case 'rectangle':
+          objectsMap.set(objectId, { ...existing, fill: color, lastModifiedBy: userId, lastModifiedAt: Date.now() });
+          break;
+        case 'circle':
           objectsMap.set(objectId, { ...existing, fill: color, lastModifiedBy: userId, lastModifiedAt: Date.now() });
           break;
         case 'text':

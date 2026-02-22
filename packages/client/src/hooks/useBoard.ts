@@ -5,6 +5,7 @@ import type {
   BoardObject,
   StickyNote,
   RectangleShape,
+  CircleShape,
   TextElement,
   Frame,
   Connector,
@@ -15,6 +16,8 @@ import {
   DEFAULT_STICKY_HEIGHT,
   DEFAULT_RECT_WIDTH,
   DEFAULT_RECT_HEIGHT,
+  DEFAULT_CIRCLE_WIDTH,
+  DEFAULT_CIRCLE_HEIGHT,
   DEFAULT_FILL,
   DEFAULT_STROKE,
   DEFAULT_TEXT_FONT_SIZE,
@@ -46,6 +49,7 @@ const containmentLog = logger('containment');
 export interface UseBoardReturn {
   createStickyNote: (x: number, y: number, text?: string, color?: string) => string | null;
   createRectangle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string | null;
+  createCircle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string | null;
   createText: (x: number, y: number, text?: string, fontSize?: number, fill?: string) => string | null;
   createFrame: (x: number, y: number, title?: string, width?: number, height?: number, fill?: string) => string | null;
   createConnector: (fromId: string, toId: string, fromX: number, fromY: number, toX: number, toY: number, stroke?: string) => string | null;
@@ -140,6 +144,36 @@ export function useBoard(
         stroke,
       };
       objectsMap.set(id, rect);
+      return id;
+    },
+    [objectsMap, userId],
+  );
+
+  /**
+   * Create a circle shape at the given position.
+   * @returns The new object's UUID, or `null` if the map is unavailable or full.
+   */
+  const createCircle = useCallback(
+    (x: number, y: number, width = DEFAULT_CIRCLE_WIDTH, height = DEFAULT_CIRCLE_HEIGHT, fill = DEFAULT_FILL, stroke = DEFAULT_STROKE): string | null => {
+      if (!objectsMap) return null;
+      if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
+      const id = uuidv4();
+      const circle: CircleShape = {
+        id,
+        type: 'circle',
+        x,
+        y,
+        width,
+        height,
+        rotation: 0,
+        zIndex: objectsMap.size,
+        lastModifiedBy: userId,
+        lastModifiedAt: Date.now(),
+        parentId: null,
+        fill,
+        stroke,
+      };
+      objectsMap.set(id, circle);
       return id;
     },
     [objectsMap, userId],
@@ -527,6 +561,7 @@ export function useBoard(
   return {
     createStickyNote,
     createRectangle,
+    createCircle,
     createText,
     createFrame,
     createConnector,

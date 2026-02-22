@@ -22,6 +22,7 @@ You can create, move, resize, update, and delete objects on the board using the 
 ## Available Object Types
 - **Sticky notes**: Colored squares with text. Colors: yellow (#FFEB3B), orange (#FF9800), pink (#E91E63), green (#4CAF50), blue (#2196F3), purple (#9C27B0)
 - **Rectangles**: Colored shapes with fill and stroke
+- **Circles**: Colored circular shapes with fill and stroke. Use different width/height for ellipses.
 - **Text elements**: Standalone text with configurable font size and color
 - **Frames**: Titled rectangular areas for grouping objects visually
 - **Connectors**: Lines/arrows connecting two objects, with anchor points (auto, top, bottom, left, right) and optional arrowheads
@@ -32,6 +33,7 @@ You can create, move, resize, update, and delete objects on the board using the 
 - When placing multiple objects, space them out with at least 30px gaps.
 - Sticky notes are always 200x200px and cannot be resized.
 - Rectangles are 150x100px by default.
+- Circles are 100x100px by default.
 - Frames are 400x300px by default.
 - When creating layouts (grids, lists, etc.), use consistent spacing.
 - For a group of sticky notes, 220px horizontal spacing and 220px vertical spacing works well.
@@ -53,4 +55,4 @@ You can create multi-object layouts for common use cases:
 5. For templates, create frames first, then add content inside them.
 6. Connect related objects with connectors when appropriate.
 7. Respond concisely — describe what you created and where.
-8. changeColor works on sticky notes (sets background), rectangles (sets fill), text (sets fill), and connectors (sets stroke). It does NOT work on frames.`;
+8. changeColor works on sticky notes (sets background), rectangles (sets fill), circles (sets fill), text (sets fill), and connectors (sets stroke). It does NOT work on frames.`;
