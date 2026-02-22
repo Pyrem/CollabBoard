@@ -365,6 +365,16 @@ export function attachLocalModifications(
     // ActiveSelection: adaptive throttle, preview only the lead object's rotation
     if (obj instanceof ActiveSelection) {
       const children = obj.getObjects();
+
+      // If the selection contains a frame, block rotation entirely
+      const hasFrame = children.some((child) => {
+        const childId = getBoardId(child);
+        if (!childId) return false;
+        const data = boardRef.current.getObject(childId);
+        return data?.type === 'frame';
+      });
+      if (hasFrame) return;
+
       const lead = children[0];
       if (!lead) return;
       const leadId = getBoardId(lead);

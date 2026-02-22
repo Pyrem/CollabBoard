@@ -127,8 +127,29 @@ export function attachSelectionManager(
     onSelectionChangeRef.current(null);
   };
 
-  canvas.on('selection:created', notifySelection);
-  canvas.on('selection:updated', notifySelection);
+  /** If the ActiveSelection contains a frame, lock rotation and hide the handle. */
+  const enforceFrameRotationLock = (): void => {
+    const active = canvas.getActiveObject();
+    if (!(active instanceof ActiveSelection)) return;
+    const hasFrame = active.getObjects().some((child) => {
+      const id = getBoardId(child);
+      if (!id) return false;
+      const data = boardRef.current.getObject(id);
+      return data?.type === 'frame';
+    });
+    if (hasFrame) {
+      active.lockRotation = true;
+      active.setControlVisible('mtr', false);
+    }
+  };
+
+  const onSelectionCreatedOrUpdated = (): void => {
+    notifySelection();
+    enforceFrameRotationLock();
+  };
+
+  canvas.on('selection:created', onSelectionCreatedOrUpdated);
+  canvas.on('selection:updated', onSelectionCreatedOrUpdated);
   canvas.on('selection:cleared', notifySelection);
 
   const handleKeyDown = (e: KeyboardEvent): void => {
@@ -183,8 +204,8 @@ export function attachSelectionManager(
   window.addEventListener('keydown', handleKeyDown);
 
   return () => {
-    canvas.off('selection:created', notifySelection);
-    canvas.off('selection:updated', notifySelection);
+    canvas.off('selection:created', onSelectionCreatedOrUpdated);
+    canvas.off('selection:updated', onSelectionCreatedOrUpdated);
     canvas.off('selection:cleared', notifySelection);
     window.removeEventListener('keydown', handleKeyDown);
   };
