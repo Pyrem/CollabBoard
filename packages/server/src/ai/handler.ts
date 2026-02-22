@@ -11,6 +11,42 @@ import { executeTool } from './executor.js';
 const anthropic = new Anthropic();
 
 /**
+ * Per-board mutex that serializes AI command execution.
+ *
+ * Without this, two concurrent AI commands on the same board would each
+ * snapshot the board state independently, send it to Claude, and execute
+ * tool calls based on potentially stale information. While individual
+ * `executeTool` calls are safe (Node.js single-threading ensures the
+ * limit check + write can't interleave), the overall command flow —
+ * read state → call Claude → execute tools — spans multiple async
+ * boundaries and can lead to wasted API calls and confusing results.
+ *
+ * The lock chains promises per boardId: each new command waits for the
+ * previous one to finish before starting.
+ */
+const boardLocks = new Map<string, Promise<void>>();
+
+async function withBoardLock<T>(boardId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = boardLocks.get(boardId) ?? Promise.resolve();
+  let releaseLock!: () => void;
+  const currentLock = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+  boardLocks.set(boardId, currentLock);
+
+  await previous;
+
+  try {
+    return await fn();
+  } finally {
+    releaseLock();
+    if (boardLocks.get(boardId) === currentLock) {
+      boardLocks.delete(boardId);
+    }
+  }
+}
+
+/**
  * Get or create a Yjs document for the given board via Hocuspocus.
  *
  * Hocuspocus manages document lifecycles — `openDirectConnection` gives
@@ -64,7 +100,9 @@ export function aiCommandHandler(
 
     const userId = authReq.userId ?? 'ai-agent';
 
-    void handleAICommand(hocuspocus, command, boardId, userId, res, viewportCenter);
+    void withBoardLock(boardId, () =>
+      handleAICommand(hocuspocus, command, boardId, userId, res, viewportCenter),
+    );
   };
 }
 
