@@ -24,7 +24,7 @@ export const aiTools: Anthropic.Tool[] = [
   {
     name: 'createStickyNote',
     description:
-      'Create a sticky note on the board. Sticky notes are colored squares with editable text inside.',
+      'Create a sticky note on the board. Sticky notes are colored squares of a fixed 200x200px size with editable text inside.',
     input_schema: {
       type: 'object' as const,
       properties: {
