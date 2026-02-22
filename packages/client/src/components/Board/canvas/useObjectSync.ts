@@ -61,7 +61,7 @@ export function useObjectSync(
     if (!canvas) return;
 
     /**
-     * Reposition all connector Lines on canvas whose fromId or toId matches
+     * Reposition all connector Lines on canvas whose start.id or end.id matches
      * the given object ID. Called after a non-connector object is synced so
      * that remote clients see connectors follow their connected objects.
      */
@@ -70,13 +70,13 @@ export function useObjectSync(
         const obj = validateBoardObject(raw);
         if (!obj || obj.type !== 'connector') return;
         const conn = obj as Connector;
-        if (conn.fromId !== objectId && conn.toId !== objectId) return;
+        if (conn.start.id !== objectId && conn.end.id !== objectId) return;
 
         const lineObj = findByBoardId(canvas, key);
         if (!lineObj || !(lineObj instanceof Line)) return;
 
-        const fromObj = findByBoardId(canvas, conn.fromId);
-        const toObj = findByBoardId(canvas, conn.toId);
+        const fromObj = findByBoardId(canvas, conn.start.id);
+        const toObj = findByBoardId(canvas, conn.end.id);
         if (!fromObj || !toObj) return;
 
         const ports = getNearestPorts(fromObj, toObj);
@@ -249,8 +249,8 @@ export function useObjectSync(
             let x2 = connData.width;
             let y2 = connData.height;
             if (x1 === 0 && y1 === 0 && x2 === 0 && y2 === 0) {
-              const fromObj = findByBoardId(canvas, connData.fromId);
-              const toObj = findByBoardId(canvas, connData.toId);
+              const fromObj = findByBoardId(canvas, connData.start.id);
+              const toObj = findByBoardId(canvas, connData.end.id);
               if (fromObj && toObj) {
                 const ports = getNearestPorts(fromObj, toObj);
                 x1 = ports.from.x;

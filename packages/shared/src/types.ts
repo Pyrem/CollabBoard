@@ -40,12 +40,22 @@ export interface LineShape extends BaseBoardObject {
   strokeWidth: number;
 }
 
+export type SnapPosition = 'auto' | 'top' | 'bottom' | 'left' | 'right';
+
+export interface ConnectorEndpoint {
+  id: string;
+  snapTo: SnapPosition;
+}
+
 export interface Connector extends BaseBoardObject {
   type: 'connector';
-  fromId: string;
-  toId: string;
+  start: ConnectorEndpoint;
+  end: ConnectorEndpoint;
   stroke: string;
+  strokeWidth: number;
   style: 'straight' | 'curved';
+  startCap: 'none' | 'arrow';
+  endCap: 'none' | 'arrow';
 }
 
 export interface Frame extends BaseBoardObject {
@@ -170,10 +180,21 @@ export function validateBoardObject(value: unknown): BoardObject | null {
       if (!hasStringFields(value, ['stroke'])) return null;
       if (!hasNumberFields(value, ['x2', 'y2', 'strokeWidth'])) return null;
       break;
-    case 'connector':
-      if (!hasStringFields(value, ['fromId', 'toId', 'stroke'])) return null;
+    case 'connector': {
+      if (!hasStringFields(value, ['stroke'])) return null;
+      if (!hasNumberFields(value, ['strokeWidth'])) return null;
       if (value['style'] !== 'straight' && value['style'] !== 'curved') return null;
+      if (value['startCap'] !== 'none' && value['startCap'] !== 'arrow') return null;
+      if (value['endCap'] !== 'none' && value['endCap'] !== 'arrow') return null;
+      // Validate start/end ConnectorEndpoints
+      if (!isRecord(value['start']) || !isRecord(value['end'])) return null;
+      const start = value['start'];
+      const end = value['end'];
+      if (typeof start['id'] !== 'string' || typeof end['id'] !== 'string') return null;
+      const validSnap = new Set(['auto', 'top', 'bottom', 'left', 'right']);
+      if (!validSnap.has(start['snapTo'] as string) || !validSnap.has(end['snapTo'] as string)) return null;
       break;
+    }
     case 'frame':
       if (!hasStringFields(value, ['title', 'fill'])) return null;
       // Backward compat: default childrenIds to [] if missing

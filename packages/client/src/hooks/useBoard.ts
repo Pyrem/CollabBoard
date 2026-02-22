@@ -26,6 +26,7 @@ import {
   DEFAULT_FRAME_FILL,
   DEFAULT_FRAME_TITLE,
   DEFAULT_CONNECTOR_STROKE,
+  DEFAULT_CONNECTOR_STROKE_WIDTH,
   MAX_OBJECTS_PER_BOARD,
   logger,
 } from '@collabboard/shared';
@@ -223,10 +224,13 @@ export function useBoard(
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
         parentId: null,
-        fromId,
-        toId,
+        start: { id: fromId, snapTo: 'auto' },
+        end: { id: toId, snapTo: 'auto' },
         stroke,
+        strokeWidth: DEFAULT_CONNECTOR_STROKE_WIDTH,
         style: 'straight',
+        startCap: 'none',
+        endCap: 'arrow',
       };
       objectsMap.set(id, connector);
       return id;

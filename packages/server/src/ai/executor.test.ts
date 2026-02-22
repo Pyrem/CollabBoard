@@ -33,6 +33,7 @@ import {
   DEFAULT_FRAME_HEIGHT,
   DEFAULT_FRAME_FILL,
   DEFAULT_CONNECTOR_STROKE,
+  DEFAULT_CONNECTOR_STROKE_WIDTH,
   MAX_OBJECTS_PER_BOARD,
 } from '@collabboard/shared';
 import { executeTool } from './executor.js';
@@ -98,7 +99,7 @@ function makeRect(overrides: Partial<RectangleShape> & { id: string }): Rectangl
 }
 
 /** Helper: build a minimal connector for seeding. */
-function makeConnector(overrides: Partial<Connector> & { id: string; fromId: string; toId: string }): Connector {
+function makeConnector(overrides: Partial<Connector> & { id: string; start: Connector['start']; end: Connector['end'] }): Connector {
   return {
     type: 'connector',
     x: 0,
@@ -111,7 +112,10 @@ function makeConnector(overrides: Partial<Connector> & { id: string; fromId: str
     lastModifiedAt: Date.now(),
     parentId: null,
     stroke: DEFAULT_CONNECTOR_STROKE,
+    strokeWidth: DEFAULT_CONNECTOR_STROKE_WIDTH,
     style: 'straight',
+    startCap: 'none',
+    endCap: 'arrow',
     ...overrides,
   };
 }
@@ -353,10 +357,13 @@ describe('createConnector', () => {
     const data = result.data as { id: string };
     const created = getObject(doc, data.id) as Connector;
     expect(created.type).toBe('connector');
-    expect(created.fromId).toBe('sticky-a');
-    expect(created.toId).toBe('rect-b');
+    expect(created.start).toEqual({ id: 'sticky-a', snapTo: 'auto' });
+    expect(created.end).toEqual({ id: 'rect-b', snapTo: 'auto' });
     expect(created.stroke).toBe(DEFAULT_CONNECTOR_STROKE);
+    expect(created.strokeWidth).toBe(DEFAULT_CONNECTOR_STROKE_WIDTH);
     expect(created.style).toBe('straight');
+    expect(created.startCap).toBe('none');
+    expect(created.endCap).toBe('arrow');
   });
 
   it('should respect style parameter', () => {
@@ -392,6 +399,27 @@ describe('createConnector', () => {
     const data = result.data as { id: string };
     const created = getObject(doc, data.id) as Connector;
     expect(created.style).toBe('straight');
+  });
+
+  it('should respect snap and cap parameters', () => {
+    const doc = makeDoc();
+    seedObject(doc, makeSticky({ id: 'a' }));
+    seedObject(doc, makeSticky({ id: 'b' }));
+
+    const result = executeTool(
+      'createConnector',
+      { fromId: 'a', toId: 'b', fromSnapTo: 'right', toSnapTo: 'left', startCap: 'arrow', endCap: 'none' },
+      doc,
+      TEST_USER,
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as { id: string };
+    const created = getObject(doc, data.id) as Connector;
+    expect(created.start).toEqual({ id: 'a', snapTo: 'right' });
+    expect(created.end).toEqual({ id: 'b', snapTo: 'left' });
+    expect(created.startCap).toBe('arrow');
+    expect(created.endCap).toBe('none');
   });
 
   it('should fail when source object not found', () => {
@@ -684,7 +712,7 @@ describe('changeColor', () => {
     const doc = makeDoc();
     seedObject(doc, makeSticky({ id: 'a' }));
     seedObject(doc, makeSticky({ id: 'b' }));
-    seedObject(doc, makeConnector({ id: 'conn-1', fromId: 'a', toId: 'b', stroke: '#666' }));
+    seedObject(doc, makeConnector({ id: 'conn-1', start: { id: 'a', snapTo: 'auto' }, end: { id: 'b', snapTo: 'auto' }, stroke: '#666' }));
 
     const result = executeTool(
       'changeColor',

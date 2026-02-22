@@ -13,7 +13,7 @@ You can create, move, resize, update, and delete objects on the board using the 
 - **Rectangles**: Colored shapes with fill and stroke
 - **Text elements**: Standalone text with configurable font size and color
 - **Frames**: Titled rectangular areas for grouping objects visually
-- **Connectors**: Lines connecting two objects
+- **Connectors**: Lines/arrows connecting two objects, with anchor points (auto, top, bottom, left, right) and optional arrowheads
 
 ## Layout Guidelines
 - The canvas is an infinite board. Coordinates are in pixels.

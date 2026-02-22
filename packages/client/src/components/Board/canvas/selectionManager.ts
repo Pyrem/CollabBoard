@@ -43,8 +43,8 @@ function describeObject(obj: BoardObject): Record<string, unknown> {
       base.fill = obj.fill;
       break;
     case 'connector':
-      base.fromId = obj.fromId;
-      base.toId = obj.toId;
+      base.startId = obj.start.id;
+      base.endId = obj.end.id;
       base.stroke = obj.stroke;
       break;
   }
@@ -53,7 +53,7 @@ function describeObject(obj: BoardObject): Record<string, unknown> {
 
 /**
  * Find and delete all connectors that reference any of the given object IDs.
- * Scans the board for connectors whose `fromId` or `toId` is in `deletedIds`.
+ * Scans the board for connectors whose `start.id` or `end.id` is in `deletedIds`.
  */
 function cascadeDeleteConnectors(
   board: ReturnType<typeof useBoard>,
@@ -63,7 +63,7 @@ function cascadeDeleteConnectors(
   for (const obj of board.getAllObjects()) {
     if (obj.type !== 'connector') continue;
     const conn = obj as Connector;
-    if (deletedIds.has(conn.fromId) || deletedIds.has(conn.toId)) {
+    if (deletedIds.has(conn.start.id) || deletedIds.has(conn.end.id)) {
       connectorIds.push(conn.id);
     }
   }

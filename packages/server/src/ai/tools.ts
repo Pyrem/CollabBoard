@@ -80,16 +80,36 @@ export const aiTools: Anthropic.Tool[] = [
   {
     name: 'createConnector',
     description:
-      'Create a connector line between two existing objects on the board. Both objects must already exist.',
+      'Create a connector line between two existing objects on the board. Both objects must already exist. Connectors attach to anchor points on shapes — by default "auto" picks the nearest edge.',
     input_schema: {
       type: 'object' as const,
       properties: {
         fromId: { type: 'string', description: 'ID of the source object' },
         toId: { type: 'string', description: 'ID of the target object' },
+        fromSnapTo: {
+          type: 'string',
+          enum: ['auto', 'top', 'bottom', 'left', 'right'],
+          description: 'Anchor point on the source object (default "auto")',
+        },
+        toSnapTo: {
+          type: 'string',
+          enum: ['auto', 'top', 'bottom', 'left', 'right'],
+          description: 'Anchor point on the target object (default "auto")',
+        },
         style: {
           type: 'string',
           enum: ['straight', 'curved'],
           description: 'Connector line style (default "straight")',
+        },
+        endCap: {
+          type: 'string',
+          enum: ['none', 'arrow'],
+          description: 'End cap style — "arrow" shows an arrowhead at the target (default "arrow")',
+        },
+        startCap: {
+          type: 'string',
+          enum: ['none', 'arrow'],
+          description: 'Start cap style (default "none")',
         },
       },
       required: ['fromId', 'toId'],

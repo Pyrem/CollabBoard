@@ -20,6 +20,7 @@ import {
   DEFAULT_FRAME_HEIGHT,
   DEFAULT_FRAME_FILL,
   DEFAULT_CONNECTOR_STROKE,
+  DEFAULT_CONNECTOR_STROKE_WIDTH,
   DEFAULT_TEXT_FONT_SIZE,
   DEFAULT_TEXT_FILL,
   DEFAULT_TEXT_WIDTH,
@@ -27,6 +28,7 @@ import {
   MAX_OBJECTS_PER_BOARD,
   validateBoardObject,
 } from '@collabboard/shared';
+import type { SnapPosition } from '@collabboard/shared';
 
 /** Result of executing a single tool call. */
 export interface ToolResult {
@@ -160,6 +162,11 @@ export function executeTool(
         return { success: false, message: `Invalid connector style: "${String(style)}". Must be "straight" or "curved".` };
       }
 
+      const fromSnapTo = (input['fromSnapTo'] as SnapPosition | undefined) ?? 'auto';
+      const toSnapTo = (input['toSnapTo'] as SnapPosition | undefined) ?? 'auto';
+      const startCap = (input['startCap'] as 'none' | 'arrow' | undefined) ?? 'none';
+      const endCap = (input['endCap'] as 'none' | 'arrow' | undefined) ?? 'arrow';
+
       const id = uuidv4();
       const connector: Connector = {
         id,
@@ -173,10 +180,13 @@ export function executeTool(
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
         parentId: null,
-        fromId,
-        toId,
+        start: { id: fromId, snapTo: fromSnapTo },
+        end: { id: toId, snapTo: toSnapTo },
         stroke: DEFAULT_CONNECTOR_STROKE,
+        strokeWidth: DEFAULT_CONNECTOR_STROKE_WIDTH,
         style,
+        startCap,
+        endCap,
       };
       objectsMap.set(id, connector);
       return { success: true, message: `Created connector from ${fromId} to ${toId}`, data: { id } };
