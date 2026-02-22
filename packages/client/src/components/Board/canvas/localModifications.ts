@@ -182,6 +182,29 @@ export function attachLocalModifications(
         y: decomposed.translateY,
       });
       isLocalUpdateRef.current = false;
+
+      // Move children of any frames in the selection visually (no Yjs writes)
+      for (const child of children) {
+        const childId = getBoardId(child);
+        if (!childId) continue;
+        const boardData = boardRef.current.getObject(childId);
+        if (boardData?.type !== 'frame') continue;
+        const childWorld = child.calcTransformMatrix();
+        const childDecomposed = util.qrDecompose(childWorld);
+        const frameX = childDecomposed.translateX;
+        const frameY = childDecomposed.translateY;
+        if (!framePrevPos[childId]) {
+          framePrevPos[childId] = { x: boardData.x, y: boardData.y };
+        }
+        const prev = framePrevPos[childId];
+        const deltaX = frameX - prev.x;
+        const deltaY = frameY - prev.y;
+        if (deltaX !== 0 || deltaY !== 0) {
+          moveFrameChildrenOnCanvas(boardData as Frame, deltaX, deltaY, false);
+          framePrevPos[childId] = { x: frameX, y: frameY };
+        }
+      }
+
       return;
     }
 
@@ -466,6 +489,16 @@ export function attachLocalModifications(
         }
       }
 
+      // Snapshot old positions of frames in the selection so we can compute
+      // deltas for their children after the batch update.
+      const frameOldPositions: Record<string, { x: number; y: number }> = {};
+      for (const { id: updateId } of updates) {
+        const objData = boardRef.current.getObject(updateId);
+        if (objData?.type === 'frame') {
+          frameOldPositions[updateId] = { x: objData.x, y: objData.y };
+        }
+      }
+
       if (updates.length > 0) {
         isLocalUpdateRef.current = true;
         log.debug('object:modified ActiveSelection', {
@@ -474,6 +507,55 @@ export function attachLocalModifications(
         });
         boardRef.current.batchUpdateObjects(updates);
         isLocalUpdateRef.current = false;
+      }
+
+      // Move children of any frames that were part of the selection
+      for (const { id: updateId, updates: upd } of updates) {
+        const oldPos = frameOldPositions[updateId];
+        if (!oldPos) continue;
+        const frameData = boardRef.current.getObject(updateId);
+        if (frameData?.type !== 'frame') continue;
+        const frame = frameData as Frame;
+        const newX = upd.x ?? frame.x;
+        const newY = upd.y ?? frame.y;
+        const deltaX = newX - oldPos.x;
+        const deltaY = newY - oldPos.y;
+        if (deltaX === 0 && deltaY === 0) continue;
+
+        containmentLog.debug('group frame child move', {
+          frameId: updateId,
+          delta: { x: deltaX, y: deltaY },
+          childrenIds: frame.childrenIds,
+        });
+
+        const childUpdates: Array<{ id: string; updates: Partial<BoardObject> }> = [];
+        for (const childId of frame.childrenIds) {
+          const childFab = findByBoardId(canvas, childId);
+          if (!childFab) continue;
+          // During group drag, children weren't moved visually — compute from Yjs + delta
+          const childData = boardRef.current.getObject(childId);
+          if (!childData) continue;
+          const childNewX = childData.x + deltaX;
+          const childNewY = childData.y + deltaY;
+          childFab.set({ left: childNewX, top: childNewY });
+          childFab.setCoords();
+          localUpdateIdsRef.current.add(childId);
+          childUpdates.push({
+            id: childId,
+            updates: { x: childNewX, y: childNewY },
+          });
+        }
+        if (childUpdates.length > 0) {
+          isLocalUpdateRef.current = true;
+          boardRef.current.batchUpdateObjects(childUpdates);
+          isLocalUpdateRef.current = false;
+        }
+        // Reposition connectors for moved children
+        for (const childId of frame.childrenIds) {
+          repositionConnectors(canvas, boardRef, childId, true, isLocalUpdateRef, localUpdateIdsRef);
+        }
+        // Clean up drag tracking
+        delete framePrevPos[updateId];
       }
 
       // Reconstruct frame Groups that were resized (their internal children
