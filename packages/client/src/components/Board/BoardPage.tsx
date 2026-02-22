@@ -62,14 +62,14 @@ export function BoardPage(): React.JSX.Element {
 
   if (!yjs) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+      <div className="flex items-center justify-center h-screen">
         Connecting...
       </div>
     );
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div className="relative w-full h-full">
       <Canvas
         objectsMap={yjs.objectsMap}
         board={board}
@@ -85,42 +85,17 @@ export function BoardPage(): React.JSX.Element {
       <Toolbar board={board} selectedObject={selectedObject} activeTool={activeTool} onToolChange={setActiveTool} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
       <PresencePanel users={onlineUsers} />
       <AIChat messages={ai.messages} isLoading={ai.isLoading} onSend={handleAISend} />
-      <button onClick={() => void handleLogout()} style={styles.logoutBtn}>
+      <button
+        onClick={() => void handleLogout()}
+        className="absolute top-3 right-3 px-3.5 py-1.5 text-[13px] font-semibold border border-gray-300 rounded-lg bg-white text-gray-700 cursor-pointer z-[100] hover:bg-gray-50"
+      >
         Log out
       </button>
       {!yjs.connected && (
-        <div style={styles.connectionBanner}>Reconnecting...</div>
+        <div className="absolute top-0 left-0 right-0 bg-orange-500 text-white text-center p-2 text-sm font-semibold z-[1000]">
+          Reconnecting...
+        </div>
       )}
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  logoutBtn: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    padding: '6px 14px',
-    fontSize: 13,
-    fontWeight: 600,
-    border: '1px solid #ddd',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    color: '#333',
-    cursor: 'pointer',
-    zIndex: 100,
-  },
-  connectionBanner: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#ff9800',
-    color: '#fff',
-    textAlign: 'center',
-    padding: 8,
-    fontSize: 14,
-    fontWeight: 600,
-    zIndex: 1000,
-  },
-};

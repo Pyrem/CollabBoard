@@ -6,90 +6,33 @@ interface PresencePanelProps {
 
 export function PresencePanel({ users }: PresencePanelProps): React.JSX.Element {
   return (
-    <div style={styles.panel}>
-      <div style={styles.header}>
+    <div className="absolute top-3 right-3 bg-white rounded-[10px] shadow-md min-w-[180px] z-[100] overflow-hidden">
+      <div className="px-3.5 py-2.5 text-[13px] font-semibold border-b border-gray-200">
         Online ({users.length})
       </div>
-      <div style={styles.list}>
+      <div className="py-1.5 max-h-[200px] overflow-y-auto">
         {users.map((user) => (
-          <div key={user.userId} style={styles.user}>
+          <div key={user.userId} className="flex items-center gap-2.5 px-3.5 py-1.5">
             <div
-              style={{
-                ...styles.avatar,
-                backgroundColor: user.color,
-              }}
+              className="w-7 h-7 rounded-full flex items-center justify-center overflow-hidden shrink-0"
+              style={{ backgroundColor: user.color }}
             >
               {user.photoURL ? (
                 <img
                   src={user.photoURL}
                   alt={user.displayName}
-                  style={styles.avatarImg}
+                  className="w-full h-full object-cover"
                 />
               ) : (
-                <span style={styles.avatarText}>
+                <span className="text-white text-xs font-bold">
                   {user.displayName.charAt(0).toUpperCase()}
                 </span>
               )}
             </div>
-            <span style={styles.userName}>{user.displayName}</span>
+            <span className="text-[13px] text-gray-700">{user.displayName}</span>
           </div>
         ))}
       </div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  panel: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
-    minWidth: 180,
-    zIndex: 100,
-    overflow: 'hidden',
-  },
-  header: {
-    padding: '10px 14px',
-    fontSize: 13,
-    fontWeight: 600,
-    borderBottom: '1px solid #eee',
-  },
-  list: {
-    padding: '6px 0',
-    maxHeight: 200,
-    overflowY: 'auto',
-  },
-  user: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '6px 14px',
-  },
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    flexShrink: 0,
-  },
-  avatarImg: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 700,
-  },
-  userName: {
-    fontSize: 13,
-    color: '#333',
-  },
-};

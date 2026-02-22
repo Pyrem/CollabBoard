@@ -16,6 +16,10 @@ type Tool = 'select' | 'sticky' | 'rectangle' | 'text' | 'frame' | 'connector';
 
 const FONT_SIZES = [14, 20, 28, 36, 48] as const;
 
+const toolBtnBase =
+  'px-3.5 py-1.5 border border-gray-300 rounded-lg bg-white cursor-pointer text-[13px] font-medium hover:bg-gray-50';
+const toolBtnActive = 'bg-blue-50 border-blue-500 text-blue-800';
+
 export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSceneCenter }: ToolbarProps): React.JSX.Element {
   const [selectedColor, setSelectedColor] = useState<string>(STICKY_COLORS[0]);
   const lastColorChangeRef = useRef(0);
@@ -91,72 +95,54 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
   };
 
   return (
-    <div style={styles.toolbar}>
+    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-white rounded-xl shadow-lg px-3 py-2 flex items-center gap-2 z-[100]">
       <button
-        style={{
-          ...styles.toolBtn,
-          ...(activeTool === 'select' ? styles.active : {}),
-        }}
+        className={`${toolBtnBase} ${activeTool === 'select' ? toolBtnActive : ''}`}
         onClick={() => onToolChange('select')}
         title="Select (V)"
       >
         Select
       </button>
       <button
-        style={{
-          ...styles.toolBtn,
-          ...(activeTool === 'sticky' ? styles.active : {}),
-        }}
+        className={`${toolBtnBase} ${activeTool === 'sticky' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('sticky')}
         title="Sticky Note (S)"
       >
         Sticky
       </button>
       <button
-        style={{
-          ...styles.toolBtn,
-          ...(activeTool === 'rectangle' ? styles.active : {}),
-        }}
+        className={`${toolBtnBase} ${activeTool === 'rectangle' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('rectangle')}
         title="Rectangle (R)"
       >
         Rect
       </button>
       <button
-        style={{
-          ...styles.toolBtn,
-          ...(activeTool === 'text' ? styles.active : {}),
-        }}
+        className={`${toolBtnBase} ${activeTool === 'text' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('text')}
         title="Text (T)"
       >
         Text
       </button>
       <button
-        style={{
-          ...styles.toolBtn,
-          ...(activeTool === 'frame' ? styles.active : {}),
-        }}
+        className={`${toolBtnBase} ${activeTool === 'frame' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('frame')}
         title="Frame (F)"
       >
         Frame
       </button>
       <button
-        style={{
-          ...styles.toolBtn,
-          ...(activeTool === 'connector' ? styles.active : {}),
-        }}
+        className={`${toolBtnBase} ${activeTool === 'connector' ? toolBtnActive : ''}`}
         onClick={() => handleToolClick('connector')}
         title="Connector (C)"
       >
         Connect
       </button>
 
-      <div style={styles.separator} />
+      <div className="w-px h-6 bg-gray-300 mx-1" />
 
       <button
-        style={styles.clearBtn}
+        className="px-3.5 py-1.5 border border-red-300 rounded-lg bg-white text-red-800 cursor-pointer text-[13px] font-medium hover:bg-red-50"
         onClick={() => {
           if (window.confirm('Clear all objects from the board?')) {
             board.clearAll();
@@ -167,16 +153,15 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
         Clear
       </button>
 
-      <div style={styles.separator} />
+      <div className="w-px h-6 bg-gray-300 mx-1" />
 
       {STICKY_COLORS.map((color) => (
         <button
           key={color}
-          style={{
-            ...styles.colorBtn,
-            backgroundColor: color,
-            ...(selectedColor === color ? { outline: '2px solid #333', outlineOffset: 2 } : {}),
-          }}
+          className={`w-6 h-6 rounded-full border border-black/15 cursor-pointer p-0 ${
+            selectedColor === color ? 'outline-2 outline-gray-700 outline-offset-2' : ''
+          }`}
+          style={{ backgroundColor: color }}
           onClick={() => handleColorClick(color)}
           title={color}
         />
@@ -184,11 +169,11 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
 
       {selectedObject?.type === 'text' && (
         <>
-          <div style={styles.separator} />
+          <div className="w-px h-6 bg-gray-300 mx-1" />
           {FONT_SIZES.map((size) => (
             <button
               key={size}
-              style={styles.fontSizeBtn}
+              className="px-2 py-1 border border-gray-300 rounded-md bg-white cursor-pointer text-[11px] font-medium min-w-[32px] hover:bg-gray-50"
               onClick={() => {
                 board.updateObject(selectedObject.id, { fontSize: size } as Partial<BoardObject>);
               }}
@@ -200,13 +185,10 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
         </>
       )}
 
-      <div style={styles.separator} />
+      <div className="w-px h-6 bg-gray-300 mx-1" />
 
       <span
-        style={{
-          ...styles.objectCount,
-          ...(atLimit ? styles.objectCountAtLimit : {}),
-        }}
+        className={`text-[11px] font-medium whitespace-nowrap ${atLimit ? 'text-red-800 font-bold' : 'text-gray-400'}`}
         title={`${String(objectCount)} / ${String(MAX_OBJECTS_PER_BOARD)} objects`}
       >
         {String(objectCount)}/{String(MAX_OBJECTS_PER_BOARD)}
@@ -214,78 +196,3 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  toolbar: {
-    position: 'absolute',
-    bottom: 20,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    boxShadow: '0 2px 16px rgba(0,0,0,0.15)',
-    padding: '8px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    zIndex: 100,
-  },
-  toolBtn: {
-    padding: '6px 14px',
-    border: '1px solid #ddd',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    cursor: 'pointer',
-    fontSize: 13,
-    fontWeight: 500,
-  },
-  active: {
-    backgroundColor: '#e3f2fd',
-    borderColor: '#2196F3',
-    color: '#1565C0',
-  },
-  clearBtn: {
-    padding: '6px 14px',
-    border: '1px solid #e57373',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    color: '#c62828',
-    cursor: 'pointer',
-    fontSize: 13,
-    fontWeight: 500,
-  },
-  separator: {
-    width: 1,
-    height: 24,
-    backgroundColor: '#ddd',
-    margin: '0 4px',
-  },
-  colorBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: '50%',
-    border: '1px solid rgba(0,0,0,0.15)',
-    cursor: 'pointer',
-    padding: 0,
-  },
-  fontSizeBtn: {
-    padding: '4px 8px',
-    border: '1px solid #ddd',
-    borderRadius: 6,
-    backgroundColor: '#fff',
-    cursor: 'pointer',
-    fontSize: 11,
-    fontWeight: 500,
-    minWidth: 32,
-  },
-  objectCount: {
-    fontSize: 11,
-    color: '#888',
-    fontWeight: 500,
-    whiteSpace: 'nowrap',
-  },
-  objectCountAtLimit: {
-    color: '#c62828',
-    fontWeight: 700,
-  },
-};

@@ -8,7 +8,7 @@ interface CursorOverlayProps {
 
 export function CursorOverlay({ cursors, viewport }: CursorOverlayProps): React.JSX.Element {
   return (
-    <div style={styles.overlay}>
+    <div className="absolute inset-0 pointer-events-none z-50">
       {cursors.map((user) => {
         if (!user.cursor) return null;
         const screenX = user.cursor.x * viewport.zoom + viewport.panX;
@@ -16,10 +16,11 @@ export function CursorOverlay({ cursors, viewport }: CursorOverlayProps): React.
         return (
           <div
             key={user.userId}
+            className="absolute pointer-events-none"
             style={{
-              ...styles.cursor,
               left: screenX,
               top: screenY,
+              transition: 'left 0.05s linear, top 0.05s linear',
             }}
           >
             <svg width="16" height="20" viewBox="0 0 16 20" fill="none">
@@ -29,10 +30,8 @@ export function CursorOverlay({ cursors, viewport }: CursorOverlayProps): React.
               />
             </svg>
             <span
-              style={{
-                ...styles.label,
-                backgroundColor: user.color,
-              }}
+              className="absolute top-5 left-2.5 text-white text-[11px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
+              style={{ backgroundColor: user.color }}
             >
               {user.displayName}
             </span>
@@ -42,31 +41,3 @@ export function CursorOverlay({ cursors, viewport }: CursorOverlayProps): React.
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    pointerEvents: 'none',
-    zIndex: 50,
-  },
-  cursor: {
-    position: 'absolute',
-    pointerEvents: 'none',
-    transition: 'left 0.05s linear, top 0.05s linear',
-  },
-  label: {
-    position: 'absolute',
-    top: 20,
-    left: 10,
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 600,
-    padding: '2px 6px',
-    borderRadius: 4,
-    whiteSpace: 'nowrap',
-  },
-};

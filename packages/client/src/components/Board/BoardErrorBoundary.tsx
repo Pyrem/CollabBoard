@@ -36,21 +36,29 @@ export class BoardErrorBoundary extends Component<Props, State> {
     }
 
     return (
-      <div style={styles.container}>
-        <div style={styles.card}>
-          <h2 style={styles.heading}>Something went wrong</h2>
-          <p style={styles.message}>
+      <div className="flex items-center justify-center h-screen bg-gray-100">
+        <div className="max-w-[460px] px-9 py-8 bg-white rounded-xl shadow-md text-center">
+          <h2 className="mb-2 text-xl font-bold text-gray-900">Something went wrong</h2>
+          <p className="mb-4 text-sm leading-relaxed text-gray-600">
             {this.props.message ??
-              'The board encountered a rendering error. Your data is safe — it\u2019s synced via the server.'}
+              'The board encountered a rendering error. Your data is safe \u2014 it\u2019s synced via the server.'}
           </p>
           {this.state.error && (
-            <pre style={styles.detail}>{this.state.error.message}</pre>
+            <pre className="mb-5 px-3.5 py-2.5 text-xs text-red-800 bg-red-50 rounded-md overflow-x-auto text-left">
+              {this.state.error.message}
+            </pre>
           )}
-          <div style={styles.actions}>
-            <button onClick={this.handleReset} style={styles.secondaryBtn}>
+          <div className="flex gap-2.5 justify-center">
+            <button
+              onClick={this.handleReset}
+              className="px-5 py-2 text-sm font-semibold border border-gray-300 rounded-lg bg-white text-gray-700 cursor-pointer hover:bg-gray-50"
+            >
               Try again
             </button>
-            <button onClick={this.handleReload} style={styles.primaryBtn}>
+            <button
+              onClick={this.handleReload}
+              className="px-5 py-2 text-sm font-semibold border-none rounded-lg bg-blue-600 text-white cursor-pointer hover:bg-blue-700"
+            >
               Reload page
             </button>
           </div>
@@ -59,68 +67,3 @@ export class BoardErrorBoundary extends Component<Props, State> {
     );
   }
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100vh',
-    backgroundColor: '#f5f5f5',
-  },
-  card: {
-    maxWidth: 460,
-    padding: '32px 36px',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-    textAlign: 'center' as const,
-  },
-  heading: {
-    margin: '0 0 8px',
-    fontSize: 20,
-    fontWeight: 700,
-    color: '#1a1a1a',
-  },
-  message: {
-    margin: '0 0 16px',
-    fontSize: 14,
-    lineHeight: 1.5,
-    color: '#555',
-  },
-  detail: {
-    margin: '0 0 20px',
-    padding: '10px 14px',
-    fontSize: 12,
-    color: '#b71c1c',
-    backgroundColor: '#fdecea',
-    borderRadius: 6,
-    overflowX: 'auto' as const,
-    textAlign: 'left' as const,
-  },
-  actions: {
-    display: 'flex',
-    gap: 10,
-    justifyContent: 'center',
-  },
-  primaryBtn: {
-    padding: '8px 20px',
-    fontSize: 14,
-    fontWeight: 600,
-    border: 'none',
-    borderRadius: 8,
-    backgroundColor: '#1976d2',
-    color: '#fff',
-    cursor: 'pointer',
-  },
-  secondaryBtn: {
-    padding: '8px 20px',
-    fontSize: 14,
-    fontWeight: 600,
-    border: '1px solid #ddd',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    color: '#333',
-    cursor: 'pointer',
-  },
-};
