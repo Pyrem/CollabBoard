@@ -6,7 +6,19 @@ interface AuthGuardProps {
   children: ReactNode;
 }
 
-/** Route guard that redirects to `/login` if the user is not authenticated. */
+/**
+ * Route guard that redirects to `/login` if the user is not authenticated.
+ *
+ * Shows a full-screen "Loading..." indicator while the Firebase auth state
+ * is being resolved (first render after page refresh). Once resolved, renders
+ * `children` if the user is signed in, or a `<Navigate to="/login">` redirect
+ * otherwise.
+ *
+ * @example
+ * <Route path="/board/:boardId" element={<AuthGuard><BoardPage /></AuthGuard>} />
+ *
+ * @see {@link AuthContext} for the React context consumed by this component.
+ */
 export function AuthGuard({ children }: AuthGuardProps): React.JSX.Element {
   const { user, loading } = use(AuthContext);
 

@@ -18,22 +18,39 @@ import { getBoardId, findByBoardId, getNearestPorts } from './canvas/fabricHelpe
 import { TextEditingOverlay } from './canvas/TextEditingOverlay.js';
 import { useObjectSync } from './canvas/useObjectSync.js';
 
+/** Minimal descriptor for the currently Fabric-selected board object. */
 export interface SelectedObject {
+  /** UUID of the selected board object. */
   id: string;
+  /** Discriminant from {@link BoardObject.type}. */
   type: string;
 }
 
+/** Canvas-space centre point of the visible viewport (used by AI placement). */
 export interface SceneCenter {
   x: number;
   y: number;
 }
 
+/**
+ * Current viewport transform state, emitted on every pan/zoom change.
+ *
+ * Used by {@link CursorOverlay} to convert remote cursor canvas-space
+ * positions to screen pixels.
+ */
 export interface ViewportState {
   zoom: number;
   panX: number;
   panY: number;
 }
 
+/**
+ * State for the text-editing overlay that appears over a sticky note or
+ * frame title when the user double-clicks.
+ *
+ * Screen coordinates and dimensions are pre-computed from the Fabric
+ * Group's position × the current zoom level.
+ */
 export interface EditingState {
   id: string;
   text: string;
@@ -48,6 +65,19 @@ export interface EditingState {
   objectType: 'sticky' | 'frame';
 }
 
+/**
+ * Props for the {@link Canvas} component.
+ *
+ * @property objectsMap - The Yjs shared map (`Y.Map('objects')`).
+ * @property board - {@link useBoard} return value — CRUD operations.
+ * @property userCount - Number of online users (drives adaptive throttle).
+ * @property activeTool - Current toolbar tool (`'select'`, `'sticky'`, `'connector'`, etc.).
+ * @property onToolChange - Called when the Canvas internally resets the tool (e.g. after connector creation).
+ * @property onCursorMove - Cursor broadcast callback from {@link useCursors}.
+ * @property onSelectionChange - Notifies parent when the Fabric selection changes.
+ * @property onReady - Called once with a `getSceneCenter` getter for AI placement.
+ * @property onViewportChange - Called on every pan/zoom with the current viewport state.
+ */
 interface CanvasProps {
   objectsMap: Y.Map<unknown>;
   board: ReturnType<typeof useBoard>;

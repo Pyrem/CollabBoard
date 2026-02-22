@@ -1,6 +1,13 @@
 import { useRef, useState, type FormEvent } from 'react';
 import type { AIMessage } from '../../hooks/useAI.js';
 
+/**
+ * Props for the {@link AIChat} component.
+ *
+ * @property messages - Full conversation history from {@link useAI}.
+ * @property isLoading - `true` while an AI request is in-flight (disables input).
+ * @property onSend - Callback invoked with the trimmed user command string.
+ */
 interface AIChatProps {
   messages: AIMessage[];
   isLoading: boolean;
@@ -9,7 +16,19 @@ interface AIChatProps {
 
 const messageBase = 'px-2.5 py-1.5 rounded-lg text-[13px] leading-snug max-w-[90%]';
 
-/** Collapsible chat panel for sending natural language commands to the AI agent. */
+/**
+ * Collapsible chat panel for sending natural-language commands to the AI agent.
+ *
+ * **Collapsed state** — renders a small "AI" FAB (bottom-right).
+ * **Expanded state** — a 360×440 px panel with:
+ * - A scrollable message list (user / assistant / error bubbles).
+ * - A "Thinking..." indicator while the AI is processing.
+ * - An input + send button form at the bottom.
+ *
+ * The panel auto-scrolls to the latest message after each send.
+ *
+ * @see {@link useAI} for the hook that manages conversation state.
+ */
 export function AIChat({ messages, isLoading, onSend }: AIChatProps): React.JSX.Element {
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);

@@ -3,7 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../../lib/firebase.js';
 import { AuthContext } from '../../hooks/useAuth.js';
 
-/** Login/signup page with Google OAuth and email/password authentication. */
+/**
+ * Login / signup page with Google OAuth and email/password authentication.
+ *
+ * Renders a centred card with:
+ * - A "Sign in with Google" button (delegates to {@link signInWithGoogle}).
+ * - An email/password form that toggles between sign-in and sign-up modes.
+ *
+ * Automatically redirects to `/board/default` if the user is already
+ * authenticated (via `useEffect` watching `user` from {@link AuthContext}).
+ *
+ * Errors (invalid credentials, popup closed, etc.) are displayed as red
+ * text below the form.
+ */
 export function LoginPage(): React.JSX.Element {
   const { user } = use(AuthContext);
   const navigate = useNavigate();

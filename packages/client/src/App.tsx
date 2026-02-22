@@ -5,7 +5,19 @@ import { LoginPage } from './components/Auth/LoginPage.js';
 import { BoardPage } from './components/Board/BoardPage.js';
 import { BoardErrorBoundary } from './components/Board/BoardErrorBoundary.js';
 
-/** Root application component. Sets up routing, auth, and error boundaries. */
+/**
+ * Root application component — sets up routing, auth, and error boundaries.
+ *
+ * Component tree (outside → in):
+ * 1. **Top-level {@link BoardErrorBoundary}** — catches fatal errors anywhere
+ *    in the app and shows a recovery UI.
+ * 2. **{@link BrowserRouter}** — client-side routing.
+ * 3. **{@link AuthProvider}** — makes Firebase auth state available via context.
+ * 4. **Routes**:
+ *    - `/login` → {@link LoginPage}
+ *    - `/board/:boardId` → {@link AuthGuard} → inner {@link BoardErrorBoundary} → {@link BoardPage}
+ *    - `*` → redirect to `/board/default`
+ */
 export function App(): React.JSX.Element {
   return (
     <BoardErrorBoundary message="The application encountered an unexpected error. Please reload the page.">

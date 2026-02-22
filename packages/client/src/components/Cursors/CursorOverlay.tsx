@@ -1,12 +1,28 @@
 import type { UserPresence } from '@collabboard/shared';
 import type { ViewportState } from '../Board/Canvas.js';
 
+/**
+ * Props for the {@link CursorOverlay} component.
+ *
+ * @property cursors - Remote user presence states (from {@link useCursors}).
+ * @property viewport - Current canvas viewport transform (zoom + pan offsets),
+ *   used to convert canvas-space cursor positions to screen pixels.
+ */
 interface CursorOverlayProps {
   cursors: UserPresence[];
   viewport: ViewportState;
 }
 
-/** Render remote user cursors as SVG arrows with name labels, positioned via viewport transform. */
+/**
+ * Render remote user cursors as coloured SVG arrow icons with name labels.
+ *
+ * Each cursor is positioned at `(cursor.x * zoom + panX, cursor.y * zoom + panY)`
+ * using absolute positioning inside a full-screen `pointer-events: none` overlay.
+ * A CSS `transition` of 50 ms provides smooth interpolation between throttled
+ * awareness updates.
+ *
+ * Users whose `cursor` is `null` (off-canvas) are filtered out via early `return null`.
+ */
 export function CursorOverlay({ cursors, viewport }: CursorOverlayProps): React.JSX.Element {
   return (
     <div className="absolute inset-0 pointer-events-none z-50">

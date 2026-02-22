@@ -1,10 +1,20 @@
 import type { UserPresence } from '@collabboard/shared';
 
+/** Props for the {@link PresencePanel} component. */
 interface PresencePanelProps {
+  /** All currently online users from {@link usePresence}. */
   users: UserPresence[];
 }
 
-/** Floating panel showing the list of currently online users with avatars. */
+/**
+ * Floating panel (top-right corner) showing the list of currently online users.
+ *
+ * Each user is rendered with a coloured avatar circle (photo or first-initial
+ * fallback) and their display name. The panel header shows the total count.
+ * Scrollable when more than ~6 users are connected.
+ *
+ * @see {@link usePresence} for how the `users` array is derived from Yjs awareness.
+ */
 export function PresencePanel({ users }: PresencePanelProps): React.JSX.Element {
   return (
     <div className="absolute top-3 right-3 bg-white rounded-[10px] shadow-md min-w-[180px] z-[100] overflow-hidden">

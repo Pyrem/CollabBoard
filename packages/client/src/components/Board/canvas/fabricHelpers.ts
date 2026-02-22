@@ -317,7 +317,14 @@ interface Point {
 
 /**
  * Compute the 4 edge-midpoint connection ports for a Fabric object.
- * Returns points in world (canvas) coordinates, accounting for rotation.
+ *
+ * Returns points in world (canvas) coordinates, accounting for the object's
+ * rotation via a 2D rotation matrix. The four ports correspond to the
+ * top, right, bottom, and left edge midpoints of the (possibly scaled)
+ * bounding box.
+ *
+ * @param obj - Any Fabric object (Rect, Group, Textbox, etc.).
+ * @returns An array of 4 `{ x, y }` points in canvas coordinates.
  */
 export function getConnectionPoints(obj: FabricObject): Point[] {
   const center = obj.getCenterPoint();
@@ -343,7 +350,14 @@ export function getConnectionPoints(obj: FabricObject): Point[] {
 
 /**
  * Find the nearest pair of connection ports between two Fabric objects.
- * Returns `{ from, to }` — the closest edge-midpoint on each object.
+ *
+ * Computes all 4 × 4 = 16 pairwise distances (squared, to avoid `sqrt`)
+ * and returns the pair with the shortest distance. Used when creating or
+ * repositioning connectors.
+ *
+ * @param fromObj - Source Fabric object.
+ * @param toObj - Target Fabric object.
+ * @returns `{ from, to }` — the closest edge-midpoint on each object.
  */
 export function getNearestPorts(
   fromObj: FabricObject,
@@ -408,6 +422,17 @@ export function createConnectorLine(data: Connector): Line {
 
 /**
  * Update a Fabric `Line` connector's endpoints in-place.
+ *
+ * Sets `x1`/`y1` (from-point) and `x2`/`y2` (to-point) and refreshes the
+ * Fabric coordinate cache via `setCoords()`. Optionally updates the stroke
+ * colour.
+ *
+ * @param line - The existing Fabric `Line` to update.
+ * @param fromX - New from-point X.
+ * @param fromY - New from-point Y.
+ * @param toX - New to-point X.
+ * @param toY - New to-point Y.
+ * @param stroke - Optional new stroke colour (hex string).
  */
 export function updateConnectorLine(
   line: Line,
@@ -424,7 +449,16 @@ export function updateConnectorLine(
   line.setCoords();
 }
 
-/** Find a Fabric object on the canvas by its board UUID. */
+/**
+ * Find a Fabric object on the canvas by its board UUID.
+ *
+ * Linear scan of `canvas.getObjects()` — acceptable because the maximum
+ * board size is {@link MAX_OBJECTS_PER_BOARD} (500).
+ *
+ * @param canvas - The Fabric canvas to search.
+ * @param id - The board-object UUID (set via {@link setBoardId}).
+ * @returns The matching Fabric object, or `undefined` if not found.
+ */
 export function findByBoardId(canvas: FabricCanvas, id: string): FabricObject | undefined {
   return canvas.getObjects().find((obj) => getBoardId(obj) === id);
 }

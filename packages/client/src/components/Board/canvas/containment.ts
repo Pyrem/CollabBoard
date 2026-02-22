@@ -1,6 +1,11 @@
 import type { Frame, BoardObject } from '@collabboard/shared';
 
-/** Axis-aligned bounding box for a frame (frames don't rotate). */
+/**
+ * Axis-aligned bounding box for a frame.
+ *
+ * Frames do not rotate (`lockRotation: true`) so a simple AABB is sufficient
+ * for all containment tests. Computed by {@link getFrameBounds}.
+ */
 export interface FrameBounds {
   left: number;
   top: number;
@@ -11,8 +16,12 @@ export interface FrameBounds {
 /**
  * Compute axis-aligned bounds for a frame.
  *
- * Frame x/y is the top-left corner (Fabric default originX:'left',
- * originY:'top'). Since frames don't rotate, no rotation math is needed.
+ * Frame `x`/`y` is the top-left corner (Fabric default `originX:'left'`,
+ * `originY:'top'`). Since frames don't rotate (`lockRotation: true`), no
+ * trigonometric decomposition is needed.
+ *
+ * @param frame - Validated {@link Frame} from the Yjs map.
+ * @returns The AABB as `{ left, top, right, bottom }`.
  */
 export function getFrameBounds(frame: Frame): FrameBounds {
   return {
@@ -24,7 +33,13 @@ export function getFrameBounds(frame: Frame): FrameBounds {
 }
 
 /**
- * Test whether a point (object center) falls inside a frame's bounding box.
+ * Test whether a point (typically an object's center) falls inside a frame's
+ * axis-aligned bounding box.
+ *
+ * @param centerX - X coordinate of the point to test.
+ * @param centerY - Y coordinate of the point to test.
+ * @param bounds - Pre-computed {@link FrameBounds}.
+ * @returns `true` if the point is inside (inclusive of edges).
  */
 export function isInsideFrame(
   centerX: number,
@@ -42,9 +57,14 @@ export function isInsideFrame(
 /**
  * Find the frame that contains the given center point.
  *
- * If multiple frames overlap, returns the smallest (by area) so that a
- * tight-fitting frame takes priority. Returns `null` if no frame contains
- * the point.
+ * If multiple frames overlap, returns the **smallest** (by area) so that a
+ * tight-fitting frame takes priority over a larger outer frame. Returns
+ * `null` if no frame contains the point.
+ *
+ * @param centerX - X coordinate of the point to test.
+ * @param centerY - Y coordinate of the point to test.
+ * @param frames - All frames on the board (obtained via {@link getAllFrames}).
+ * @returns The smallest containing {@link Frame}, or `null`.
  */
 export function findContainingFrame(
   centerX: number,
@@ -69,8 +89,17 @@ export function findContainingFrame(
 }
 
 /**
- * Given a frame's children, return the IDs of children whose centers
- * are no longer within the frame's bounds (for eviction after resize).
+ * Return the IDs of a frame's children whose centres have fallen outside
+ * the frame's bounds.
+ *
+ * Called after a frame resize to evict objects that are no longer visually
+ * inside. Connectors are skipped because their `width`/`height` fields
+ * store endpoint coordinates, not dimensions.
+ *
+ * @param frame - The resized frame (with updated dimensions).
+ * @param allObjects - The full list of board objects (used to look up children
+ *   by `parentId`).
+ * @returns An array of UUIDs that should be unparented.
  */
 export function findEvictedChildren(
   frame: Frame,
@@ -94,7 +123,13 @@ export function findEvictedChildren(
 }
 
 /**
- * Collect all frames from a list of board objects.
+ * Filter a list of board objects to only {@link Frame} instances.
+ *
+ * Uses a TypeScript type-guard predicate so the caller gets `Frame[]`
+ * with no additional casting.
+ *
+ * @param objects - All board objects (e.g. from {@link useBoard.getAllObjects}).
+ * @returns Only the frames.
  */
 export function getAllFrames(objects: BoardObject[]): Frame[] {
   return objects.filter((obj): obj is Frame => obj.type === 'frame');

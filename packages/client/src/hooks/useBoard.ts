@@ -34,6 +34,15 @@ import {
 const log = logger('batch');
 const containmentLog = logger('containment');
 
+/**
+ * Shape returned by {@link useBoard}.
+ *
+ * Every method writes to the Yjs `objectsMap` and is automatically synced to
+ * all connected clients. Create methods return `null` when
+ * {@link MAX_OBJECTS_PER_BOARD} is reached. Batch methods use
+ * `doc.transact()` to collapse multiple mutations into a single WebSocket
+ * message.
+ */
 export interface UseBoardReturn {
   createStickyNote: (x: number, y: number, text?: string, color?: string) => string | null;
   createRectangle: (x: number, y: number, width?: number, height?: number, fill?: string, stroke?: string) => string | null;

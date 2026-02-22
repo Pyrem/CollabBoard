@@ -91,8 +91,24 @@ httpServer.listen(PORT, () => {
 let shuttingDown = false;
 
 /**
- * Gracefully shut down the server: stop accepting connections, flush
- * Hocuspocus documents to SQLite, then close the database.
+ * Gracefully shut down the server in response to a POSIX signal.
+ *
+ * Execution order:
+ * 1. Stop the HTTP server from accepting new connections.
+ * 2. Close the raw WebSocket server.
+ * 3. Call `hocuspocus.destroy()` which flushes all in-memory Yjs documents
+ *    to SQLite via the `Database` extension and disconnects clients.
+ * 4. Close the SQLite database handle.
+ * 5. Exit with code 0.
+ *
+ * A 10-second hard-exit timer (via `setTimeout(...).unref()`) guarantees the
+ * process terminates even if a step hangs.
+ *
+ * The `shuttingDown` flag ensures the function is idempotent — only the
+ * first signal triggers the sequence.
+ *
+ * @param signal - Name of the signal that triggered the shutdown
+ *   (e.g. `"SIGTERM"`, `"SIGINT"`).
  */
 function shutdown(signal: string): void {
   if (shuttingDown) return;

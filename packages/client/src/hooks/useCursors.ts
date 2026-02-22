@@ -106,7 +106,17 @@ export function useCursors(
   return { remoteCursors, updateLocalCursor };
 }
 
-/** Simple string hash used to pick a deterministic color from {@link PRESENCE_COLORS}. */
+/**
+ * Compute a simple 32-bit hash of a string.
+ *
+ * Used to deterministically assign a colour from {@link PRESENCE_COLORS} to
+ * each user. The algorithm is Java's `String.hashCode()` — fast and evenly
+ * distributed enough for a 10-colour palette.
+ *
+ * @param str - The string to hash (typically a Firebase UID).
+ * @returns A signed 32-bit integer. Pass through `Math.abs` before using as
+ *   an array index.
+ */
 function hashCode(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {

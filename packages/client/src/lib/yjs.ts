@@ -2,7 +2,20 @@ import * as Y from 'yjs';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { getIdToken } from './firebase.js';
 
-/** Resolve the Hocuspocus WebSocket URL from env, current origin, or localhost default. */
+/**
+ * Resolve the Hocuspocus WebSocket URL from the environment.
+ *
+ * Resolution order:
+ * 1. `VITE_HOCUSPOCUS_URL` env var (highest priority).
+ * 2. In production: derive `wss://` or `ws://` from the current page origin
+ *    (assumes the Hocuspocus server is co-located or proxied).
+ * 3. In development: fall back to `ws://localhost:3001`.
+ *
+ * A `console.warn` is emitted in production when the env var is missing so
+ * the developer knows to configure it.
+ *
+ * @returns The WebSocket URL string (e.g. `"wss://api.example.com"`).
+ */
 function getHocuspocusUrl(): string {
   const envUrl = import.meta.env['VITE_HOCUSPOCUS_URL'] as string | undefined;
   if (envUrl) return envUrl;
@@ -22,7 +35,18 @@ const HOCUSPOCUS_URL = getHocuspocusUrl();
 
 console.log('[YJS] Connecting to Hocuspocus at:', HOCUSPOCUS_URL);
 
-/** Create a Yjs document and Hocuspocus provider for the given board. */
+/**
+ * Create a Yjs document and Hocuspocus provider for the given board.
+ *
+ * The provider authenticates via the `token` callback, which calls
+ * {@link getIdToken} to obtain a fresh Firebase JWT on each connection
+ * attempt (including automatic reconnections).
+ *
+ * @param boardId - Room / document name passed to Hocuspocus (also the URL
+ *   segment the user sees as `/board/:boardId`).
+ * @returns `{ doc, provider }` — the caller is responsible for calling
+ *   `provider.destroy()` and `doc.destroy()` on cleanup.
+ */
 export function createYjsProvider(boardId: string): {
   doc: Y.Doc;
   provider: HocuspocusProvider;

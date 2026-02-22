@@ -1,9 +1,22 @@
-// Board limits
+// ─── Board limits ────────────────────────────────────────────────────
+
+/** Hard cap on objects per board. Enforced server-side in {@link executeTool} and client-side in {@link useBoard}. */
 export const MAX_OBJECTS_PER_BOARD = 500;
+
+/** Maximum allowed length for a board / document name. */
 export const MAX_BOARD_NAME_LENGTH = 100;
 
-// Default colors for sticky notes
+// ─── Default sticky note properties ─────────────────────────────────
+
+/** Default background colour for new sticky notes (yellow). */
 export const DEFAULT_STICKY_COLOR = '#FFEB3B';
+
+/**
+ * Palette of sticky note background colours offered in the toolbar.
+ *
+ * The order matches the colour swatches rendered in the {@link Toolbar}
+ * component (left → right).
+ */
 export const STICKY_COLORS = [
   '#FFEB3B', // yellow
   '#FF9800', // orange
@@ -13,7 +26,9 @@ export const STICKY_COLORS = [
   '#9C27B0', // purple
 ] as const;
 
-// Default object dimensions
+// ─── Default object dimensions ───────────────────────────────────────
+
+/** Fixed width of a sticky note in canvas-space pixels. */
 export const DEFAULT_STICKY_WIDTH = 200;
 export const DEFAULT_STICKY_HEIGHT = 200;
 export const DEFAULT_RECT_WIDTH = 150;
@@ -43,7 +58,15 @@ export const DEFAULT_FILL = '#4CAF50';
 export const DEFAULT_STROKE = '#000000';
 export const DEFAULT_STROKE_WIDTH = 2;
 
-// Consolidated throttle configuration
+// ─── Throttle configuration ──────────────────────────────────────────
+
+/**
+ * Consolidated throttle intervals used by both cursor broadcasting and
+ * object-sync during interactive manipulation (move/scale/rotate).
+ *
+ * Individual values are referenced from `useCursors`, `localModifications`,
+ * and `Toolbar` (colour-change debounce).
+ */
 export const THROTTLE = {
   CURSOR_MS: 30,          // normal cursor broadcast interval
   CURSOR_HEAVY_MS: 100,   // cursor during heavy operations (group drag)
@@ -54,11 +77,25 @@ export const THROTTLE = {
 } as const;
 
 /**
- * Compute an adaptive throttle interval based on connected user count and
- * the number of objects in the current selection.
+ * Compute an adaptive throttle interval (in ms) for Yjs sync writes during
+ * interactive manipulation.
  *
- * More users or larger selections → higher throttle to reduce network load.
- * Capped at {@link THROTTLE.MAX_MS}.
+ * The interval increases with the number of connected users (to reduce
+ * network traffic) and with the size of the current multi-select (to avoid
+ * flooding the Yjs document with per-object updates). The result is
+ * clamped to {@link THROTTLE.MAX_MS}.
+ *
+ * | User count | Base ms |
+ * |------------|---------|
+ * | 1–5        | 50      |
+ * | 6–10       | 100     |
+ * | 11+        | 200     |
+ *
+ * @param userCount - Number of currently connected WebSocket clients.
+ * @param selectionSize - Number of objects in the active Fabric selection.
+ * @returns Throttle interval in milliseconds.
+ *
+ * @see {@link THROTTLE} for the underlying constants.
  */
 export function getAdaptiveThrottleMs(
   userCount: number,
@@ -84,7 +121,14 @@ export function getObjectSyncThrottle(userCount: number): number {
   return getAdaptiveThrottleMs(userCount, 1);
 }
 
-// Presence colors assigned to users
+// ─── Presence colours ────────────────────────────────────────────────
+
+/**
+ * Palette of colours assigned to users for cursor arrows and presence dots.
+ *
+ * A user's colour is chosen deterministically by hashing their `userId`
+ * into an index: `PRESENCE_COLORS[hash(userId) % PRESENCE_COLORS.length]`.
+ */
 export const PRESENCE_COLORS = [
   '#FF6B6B',
   '#4ECDC4',
@@ -98,6 +142,10 @@ export const PRESENCE_COLORS = [
   '#85C1E9',
 ] as const;
 
-// AI
+// ─── AI agent limits ─────────────────────────────────────────────────
+
+/** Maximum AI command requests per IP per minute (enforced by `express-rate-limit`). */
 export const AI_RATE_LIMIT_PER_MINUTE = 10;
+
+/** Maximum tool call iterations within a single agentic loop before force-returning. */
 export const AI_MAX_TOOL_CALLS_PER_REQUEST = 20;

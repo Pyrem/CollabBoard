@@ -14,8 +14,24 @@ import { PresencePanel } from '../Presence/PresencePanel.js';
 import { AIChat } from '../AIAgent/AIChat.js';
 
 /**
- * Main board page — orchestrates the canvas, toolbar, cursor overlay,
- * presence panel, AI chat, and Yjs sync for a single board.
+ * Main board page — the top-level orchestrator for a single board session.
+ *
+ * Composes every major subsystem:
+ *
+ * | Subsystem         | Hook / Component                   |
+ * |-------------------|------------------------------------|
+ * | Real-time sync    | {@link useYjs} → `objectsMap`      |
+ * | Object CRUD       | {@link useBoard}                   |
+ * | Cursor broadcast  | {@link useCursors}                 |
+ * | Presence panel    | {@link usePresence}                |
+ * | AI commands       | {@link useAI}                      |
+ * | Canvas rendering  | {@link Canvas}                     |
+ * | Tool selection    | {@link Toolbar}                    |
+ * | Remote cursors    | {@link CursorOverlay}              |
+ *
+ * Reads `boardId` from the React Router params (`:boardId`). Displays a
+ * "Connecting..." screen until the Yjs provider is ready, and a
+ * "Reconnecting..." banner if the WebSocket drops.
  */
 export function BoardPage(): React.JSX.Element {
   const { boardId = 'default' } = useParams<{ boardId: string }>();

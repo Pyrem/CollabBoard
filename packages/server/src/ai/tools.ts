@@ -1,15 +1,24 @@
 import type Anthropic from '@anthropic-ai/sdk';
 
 /**
- * Tool definitions for the CollabBoard AI agent.
+ * Anthropic tool definitions for the CollabBoard AI agent.
  *
- * 10 tools:
- *   createStickyNote, createShape, createText, createFrame, createConnector,
- *   moveObject, resizeObject, updateText, changeColor, getBoardState
+ * Each entry maps 1-to-1 with a `case` in {@link executeTool} (`executor.ts`).
+ * The `input_schema` follows JSON Schema and is sent verbatim to Claude so it
+ * knows which parameters are available and required.
  *
- * The executor in `executor.ts` handles the actual Yjs writes.
+ * **10 tools** organised into three categories:
+ *
+ * | Category     | Tools                                                     |
+ * |--------------|-----------------------------------------------------------|
+ * | Inspection   | `getBoardState`                                           |
+ * | Creation     | `createStickyNote`, `createShape`, `createText`,          |
+ * |              | `createFrame`, `createConnector`                          |
+ * | Manipulation | `moveObject`, `resizeObject`, `updateText`, `changeColor` |
+ *
+ * @see {@link executeTool} for the server-side implementation of each tool.
+ * @see {@link SYSTEM_PROMPT} for the instructions that accompany these tools.
  */
-
 export const aiTools: Anthropic.Tool[] = [
   {
     name: 'getBoardState',

@@ -4,6 +4,17 @@ import type { SelectedObject } from '../Board/Canvas.js';
 import type { BoardObject } from '@collabboard/shared';
 import { STICKY_COLORS, MAX_OBJECTS_PER_BOARD, THROTTLE } from '@collabboard/shared';
 
+/**
+ * Props for the {@link Toolbar} component.
+ *
+ * @property board - {@link useBoard} return value — used for object creation and color changes.
+ * @property selectedObject - Currently selected board object (or `null`), used to show
+ *   context-sensitive controls (colour picker, font-size for text, etc.).
+ * @property activeTool - The currently active toolbar tool.
+ * @property onToolChange - Callback to switch the active tool.
+ * @property getSceneCenter - Returns the canvas-space centre of the viewport,
+ *   used to place newly created objects in the visible area.
+ */
 interface ToolbarProps {
   board: ReturnType<typeof useBoard>;
   selectedObject: SelectedObject | null;
@@ -12,15 +23,31 @@ interface ToolbarProps {
   getSceneCenter: () => { x: number; y: number };
 }
 
+/** Union of all tool identifiers used by the toolbar buttons. */
 type Tool = 'select' | 'sticky' | 'rectangle' | 'text' | 'frame' | 'connector';
 
+/** Available font-size presets for text elements, ordered smallest → largest. */
 const FONT_SIZES = [14, 20, 28, 36, 48] as const;
 
 const toolBtnBase =
   'px-3.5 py-1.5 border border-gray-300 rounded-lg bg-white cursor-pointer text-[13px] font-medium hover:bg-gray-50';
 const toolBtnActive = 'bg-blue-50 border-blue-500 text-blue-800';
 
-/** Bottom toolbar with tool selection, color picker, font sizes, and object count. */
+/**
+ * Bottom-anchored toolbar for tool selection, object creation, colour picking,
+ * and object count display.
+ *
+ * **Tool selection row** — buttons for Select, Sticky, Rectangle, Text, Frame,
+ * and Connector. Clicking a creation tool immediately creates an object at the
+ * viewport centre (except Connector, which enters a two-click modal flow).
+ *
+ * **Context panel** — when a board object is selected, shows a colour picker
+ * (using {@link STICKY_COLORS}) and, for text elements, a font-size selector.
+ * Colour changes are throttled to {@link THROTTLE.COLOR_CHANGE_MS}.
+ *
+ * **Object count** — displays `n / MAX_OBJECTS_PER_BOARD` and disables creation
+ * buttons when the limit is reached.
+ */
 export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSceneCenter }: ToolbarProps): React.JSX.Element {
   const [selectedColor, setSelectedColor] = useState<string>(STICKY_COLORS[0]);
   const lastColorChangeRef = useRef(0);

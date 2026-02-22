@@ -12,8 +12,19 @@ interface State {
 }
 
 /**
- * React error boundary that catches rendering errors in its children
- * and displays a recovery UI instead of a white screen.
+ * React class-based error boundary that catches rendering errors in its
+ * child tree and displays a recovery UI instead of a white screen.
+ *
+ * Two recovery options are offered:
+ * - **Try again** — resets the error state and re-renders children
+ *   (useful for transient Fabric rendering glitches).
+ * - **Reload page** — full browser reload via `window.location.reload()`.
+ *
+ * The optional `message` prop lets the parent customise the fallback
+ * description (e.g. a top-level "Application error" vs. a board-specific
+ * "Board rendering error").
+ *
+ * @see {@link App} where this boundary wraps the entire router outlet.
  */
 export class BoardErrorBoundary extends Component<Props, State> {
   override state: State = { hasError: false, error: null };
