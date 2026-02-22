@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import type { Hocuspocus } from '@hocuspocus/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { wrapAnthropic } from 'langsmith/wrappers/anthropic';
+import { traceable } from 'langsmith/traceable';
 import type * as Y from 'yjs';
 import { AI_MAX_TOOL_CALLS_PER_REQUEST } from '@collabboard/shared';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
@@ -8,7 +10,7 @@ import { aiTools } from './tools.js';
 import { SYSTEM_PROMPT } from './prompts.js';
 import { executeTool } from './executor.js';
 
-const anthropic = new Anthropic();
+const anthropic = wrapAnthropic(new Anthropic());
 
 /**
  * Get or create a Yjs document for the given board via Hocuspocus.
@@ -68,7 +70,7 @@ export function aiCommandHandler(
   };
 }
 
-async function handleAICommand(
+const handleAICommand = traceable(async function handleAICommand(
   hocuspocus: Hocuspocus,
   command: string,
   boardId: string,
@@ -174,4 +176,4 @@ async function handleAICommand(
       await docCleanup();
     }
   }
-}
+}, { name: 'ai-command', metadata: { service: 'collabboard' } });
