@@ -84,9 +84,7 @@ export function executeTool(
         text: (input['text'] as string) ?? '',
         color: (input['color'] as string) ?? DEFAULT_STICKY_COLOR,
       };
-      doc.transact(() => {
-        objectsMap.set(id, note);
-      });
+      objectsMap.set(id, note);
       return { success: true, message: `Created sticky note "${note.text}" at (${String(note.x)}, ${String(note.y)})`, data: { id } };
     }
 
@@ -115,9 +113,7 @@ export function executeTool(
         fill: color,
         stroke: DEFAULT_STROKE,
       };
-      doc.transact(() => {
-        objectsMap.set(id, rect);
-      });
+      objectsMap.set(id, rect);
       return { success: true, message: `Created rectangle at (${String(rect.x)}, ${String(rect.y)})`, data: { id } };
     }
 
@@ -142,9 +138,7 @@ export function executeTool(
         fill: DEFAULT_FRAME_FILL,
         childrenIds: [],
       };
-      doc.transact(() => {
-        objectsMap.set(id, frame);
-      });
+      objectsMap.set(id, frame);
       return { success: true, message: `Created frame "${frame.title}" at (${String(frame.x)}, ${String(frame.y)})`, data: { id } };
     }
 
@@ -184,9 +178,7 @@ export function executeTool(
         stroke: DEFAULT_CONNECTOR_STROKE,
         style,
       };
-      doc.transact(() => {
-        objectsMap.set(id, connector);
-      });
+      objectsMap.set(id, connector);
       return { success: true, message: `Created connector from ${fromId} to ${toId}`, data: { id } };
     }
 
@@ -211,9 +203,7 @@ export function executeTool(
         fontSize: (input['fontSize'] as number | undefined) ?? DEFAULT_TEXT_FONT_SIZE,
         fill: (input['color'] as string | undefined) ?? DEFAULT_TEXT_FILL,
       };
-      doc.transact(() => {
-        objectsMap.set(id, textEl);
-      });
+      objectsMap.set(id, textEl);
       return { success: true, message: `Created text "${textEl.text}" at (${String(textEl.x)}, ${String(textEl.y)})`, data: { id } };
     }
 
