@@ -501,6 +501,30 @@ export function attachLocalModifications(
         repositionConnectors(canvas, boardRef, updateId, true, isLocalUpdateRef, localUpdateIdsRef);
       }
 
+      // Containment check for each child in the group
+      clearFrameHighlight();
+      const allObjects = boardRef.current.getAllObjects();
+      const frames = getAllFrames(allObjects);
+      for (const { id: updateId } of updates) {
+        const droppedData = boardRef.current.getObject(updateId);
+        if (!droppedData || droppedData.type === 'frame' || droppedData.type === 'connector') continue;
+        const objCenterX = droppedData.x + droppedData.width / 2;
+        const objCenterY = droppedData.y + droppedData.height / 2;
+        const containingFrame = findContainingFrame(objCenterX, objCenterY, frames);
+        const currentParentId = droppedData.parentId ?? null;
+        const newParentId = containingFrame?.id ?? null;
+
+        if (currentParentId !== newParentId) {
+          containmentLog.debug('group reparent', { id: updateId, from: currentParentId, to: newParentId });
+          isLocalUpdateRef.current = true;
+          localUpdateIdsRef.current.add(updateId);
+          if (currentParentId) localUpdateIdsRef.current.add(currentParentId);
+          if (newParentId) localUpdateIdsRef.current.add(newParentId);
+          boardRef.current.reparent(updateId, currentParentId, newParentId);
+          isLocalUpdateRef.current = false;
+        }
+      }
+
       canvas.renderAll();
       return;
     }
