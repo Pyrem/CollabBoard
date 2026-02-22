@@ -37,7 +37,8 @@ export function BoardPage(): React.JSX.Element {
   const { boardId = 'default' } = useParams<{ boardId: string }>();
   const { user } = use(AuthContext);
   const navigate = useNavigate();
-  const yjs = useYjs(boardId);
+  // user is guaranteed non-null by AuthGuard
+  const yjs = useYjs(boardId, user!);
 
   const handleLogout = useCallback(async () => {
     await logOut();
