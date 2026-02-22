@@ -6,6 +6,7 @@ interface CursorOverlayProps {
   viewport: ViewportState;
 }
 
+/** Render remote user cursors as SVG arrows with name labels, positioned via viewport transform. */
 export function CursorOverlay({ cursors, viewport }: CursorOverlayProps): React.JSX.Element {
   return (
     <div className="absolute inset-0 pointer-events-none z-50">

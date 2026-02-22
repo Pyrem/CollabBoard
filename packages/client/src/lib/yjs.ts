@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { getIdToken } from './firebase.js';
 
+/** Resolve the Hocuspocus WebSocket URL from env, current origin, or localhost default. */
 function getHocuspocusUrl(): string {
   const envUrl = import.meta.env['VITE_HOCUSPOCUS_URL'] as string | undefined;
   if (envUrl) return envUrl;
@@ -21,6 +22,7 @@ const HOCUSPOCUS_URL = getHocuspocusUrl();
 
 console.log('[YJS] Connecting to Hocuspocus at:', HOCUSPOCUS_URL);
 
+/** Create a Yjs document and Hocuspocus provider for the given board. */
 export function createYjsProvider(boardId: string): {
   doc: Y.Doc;
   provider: HocuspocusProvider;

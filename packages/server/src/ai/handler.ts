@@ -70,6 +70,11 @@ export function aiCommandHandler(
   };
 }
 
+/**
+ * Core agentic loop: call Claude with the user's command, execute any
+ * returned tool calls against the Yjs document, and repeat until Claude
+ * returns `end_turn` or the tool call limit is reached.
+ */
 const handleAICommand = traceable(async function handleAICommand(
   hocuspocus: Hocuspocus,
   command: string,

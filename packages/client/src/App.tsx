@@ -5,6 +5,7 @@ import { LoginPage } from './components/Auth/LoginPage.js';
 import { BoardPage } from './components/Board/BoardPage.js';
 import { BoardErrorBoundary } from './components/Board/BoardErrorBoundary.js';
 
+/** Root application component. Sets up routing, auth, and error boundaries. */
 export function App(): React.JSX.Element {
   return (
     <BoardErrorBoundary message="The application encountered an unexpected error. Please reload the page.">

@@ -4,6 +4,7 @@ interface PresencePanelProps {
   users: UserPresence[];
 }
 
+/** Floating panel showing the list of currently online users with avatars. */
 export function PresencePanel({ users }: PresencePanelProps): React.JSX.Element {
   return (
     <div className="absolute top-3 right-3 bg-white rounded-[10px] shadow-md min-w-[180px] z-[100] overflow-hidden">

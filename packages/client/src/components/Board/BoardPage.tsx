@@ -13,6 +13,10 @@ import { CursorOverlay } from '../Cursors/CursorOverlay.js';
 import { PresencePanel } from '../Presence/PresencePanel.js';
 import { AIChat } from '../AIAgent/AIChat.js';
 
+/**
+ * Main board page — orchestrates the canvas, toolbar, cursor overlay,
+ * presence panel, AI chat, and Yjs sync for a single board.
+ */
 export function BoardPage(): React.JSX.Element {
   const { boardId = 'default' } = useParams<{ boardId: string }>();
   const { user } = use(AuthContext);

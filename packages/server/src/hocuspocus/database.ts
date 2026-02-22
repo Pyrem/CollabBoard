@@ -3,6 +3,7 @@ import path from 'path';
 
 const DB_PATH = process.env['DB_PATH'] ?? path.join(process.cwd(), 'collabboard.sqlite');
 
+/** Open (or create) the SQLite database and ensure the `documents` table exists. */
 export function setupDatabase(): BetterSqlite3.Database {
   const db = new BetterSqlite3(DB_PATH);
   db.pragma('journal_mode = WAL');
@@ -16,6 +17,7 @@ export function setupDatabase(): BetterSqlite3.Database {
   return db;
 }
 
+/** Load a Yjs document snapshot from SQLite by name. Returns `null` if not found. */
 export function loadDocument(
   db: BetterSqlite3.Database,
   documentName: string,
@@ -27,6 +29,7 @@ export function loadDocument(
   return new Uint8Array(row.data);
 }
 
+/** Persist a Yjs document snapshot to SQLite (insert or replace). */
 export function storeDocument(
   db: BetterSqlite3.Database,
   documentName: string,

@@ -1,6 +1,10 @@
 import type { onAuthenticatePayload } from '@hocuspocus/server';
 import { getAuth } from './firebaseAdmin.js';
 
+/**
+ * Hocuspocus authentication hook. Verifies the Firebase ID token sent
+ * by the client and attaches user info to the connection context.
+ */
 export async function onAuthenticate(data: onAuthenticatePayload): Promise<void> {
   const { token } = data;
 

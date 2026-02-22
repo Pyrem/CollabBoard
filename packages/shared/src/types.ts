@@ -84,30 +84,38 @@ export type BoardObject =
 export type BoardObjectType = BoardObject['type'];
 
 // Type guards
+
+/** Narrow a {@link BoardObject} to {@link StickyNote}. */
 export function isStickyNote(obj: BoardObject): obj is StickyNote {
   return obj.type === 'sticky';
 }
 
+/** Narrow a {@link BoardObject} to {@link RectangleShape}. */
 export function isRectangleShape(obj: BoardObject): obj is RectangleShape {
   return obj.type === 'rectangle';
 }
 
+/** Narrow a {@link BoardObject} to {@link CircleShape}. */
 export function isCircleShape(obj: BoardObject): obj is CircleShape {
   return obj.type === 'circle';
 }
 
+/** Narrow a {@link BoardObject} to {@link LineShape}. */
 export function isLineShape(obj: BoardObject): obj is LineShape {
   return obj.type === 'line';
 }
 
+/** Narrow a {@link BoardObject} to {@link Connector}. */
 export function isConnector(obj: BoardObject): obj is Connector {
   return obj.type === 'connector';
 }
 
+/** Narrow a {@link BoardObject} to {@link Frame}. */
 export function isFrame(obj: BoardObject): obj is Frame {
   return obj.type === 'frame';
 }
 
+/** Narrow a {@link BoardObject} to {@link TextElement}. */
 export function isTextElement(obj: BoardObject): obj is TextElement {
   return obj.type === 'text';
 }
@@ -124,10 +132,15 @@ const BOARD_OBJECT_TYPES = new Set<string>([
   'text',
 ]);
 
+/** Check that `value` is a non-null, non-array object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Verify that `obj` contains every field required by {@link BaseBoardObject}.
+ * Also back-fills `parentId` to `null` when missing (backward compat).
+ */
 function hasBaseFields(obj: Record<string, unknown>): boolean {
   if (
     typeof obj['id'] !== 'string' ||
@@ -152,15 +165,22 @@ function hasBaseFields(obj: Record<string, unknown>): boolean {
   return true;
 }
 
+/** Return `true` if every key in `fields` is a `string` on `obj`. */
 function hasStringFields(obj: Record<string, unknown>, fields: string[]): boolean {
   return fields.every((f) => typeof obj[f] === 'string');
 }
 
+/** Return `true` if every key in `fields` is a `number` on `obj`. */
 function hasNumberFields(obj: Record<string, unknown>, fields: string[]): boolean {
   return fields.every((f) => typeof obj[f] === 'number');
 }
 
-/** Validate that an unknown value from Yjs is a well-formed BoardObject. */
+/**
+ * Validate that an unknown value from Yjs is a well-formed {@link BoardObject}.
+ *
+ * Checks base fields, discriminant `type`, and type-specific fields.
+ * Returns `null` for any value that doesn't conform.
+ */
 export function validateBoardObject(value: unknown): BoardObject | null {
   if (!isRecord(value)) return null;
   if (!hasBaseFields(value)) return null;

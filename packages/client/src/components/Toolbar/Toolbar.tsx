@@ -20,6 +20,7 @@ const toolBtnBase =
   'px-3.5 py-1.5 border border-gray-300 rounded-lg bg-white cursor-pointer text-[13px] font-medium hover:bg-gray-50';
 const toolBtnActive = 'bg-blue-50 border-blue-500 text-blue-800';
 
+/** Bottom toolbar with tool selection, color picker, font sizes, and object count. */
 export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSceneCenter }: ToolbarProps): React.JSX.Element {
   const [selectedColor, setSelectedColor] = useState<string>(STICKY_COLORS[0]);
   const lastColorChangeRef = useRef(0);

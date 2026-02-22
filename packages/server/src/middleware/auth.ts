@@ -1,11 +1,16 @@
 import type { Request, Response, NextFunction } from 'express';
 import { getAuth } from '../hocuspocus/firebaseAdmin.js';
 
+/** Express request augmented with Firebase user info after token verification. */
 export interface AuthenticatedRequest extends Request {
   userId?: string;
   displayName?: string;
 }
 
+/**
+ * Express middleware that verifies a Firebase ID token from the
+ * `Authorization: Bearer <token>` header and attaches user info to the request.
+ */
 export async function authMiddleware(
   req: AuthenticatedRequest,
   res: Response,

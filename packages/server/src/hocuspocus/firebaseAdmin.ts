@@ -4,6 +4,10 @@ import type { Auth } from 'firebase-admin/auth';
 
 let authInstance: Auth | null = null;
 
+/**
+ * Initialize the Firebase Admin SDK using a service account JSON string,
+ * file path, or application default credentials.
+ */
 function initializeFirebaseAdmin(): void {
   if (getApps().length > 0) return;
 
@@ -23,6 +27,7 @@ function initializeFirebaseAdmin(): void {
   }
 }
 
+/** Return a singleton Firebase Auth instance, initializing the SDK on first call. */
 export function getAuth(): Auth {
   if (!authInstance) {
     initializeFirebaseAdmin();

@@ -11,6 +11,10 @@ interface State {
   error: Error | null;
 }
 
+/**
+ * React error boundary that catches rendering errors in its children
+ * and displays a recovery UI instead of a white screen.
+ */
 export class BoardErrorBoundary extends Component<Props, State> {
   override state: State = { hasError: false, error: null };
 

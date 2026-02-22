@@ -9,6 +9,7 @@ interface AIChatProps {
 
 const messageBase = 'px-2.5 py-1.5 rounded-lg text-[13px] leading-snug max-w-[90%]';
 
+/** Collapsible chat panel for sending natural language commands to the AI agent. */
 export function AIChat({ messages, isLoading, onSend }: AIChatProps): React.JSX.Element {
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);

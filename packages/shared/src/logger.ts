@@ -84,6 +84,7 @@ function isDebugSuppressed(namespace: string): boolean {
   return !namespaces.includes(namespace);
 }
 
+/** Return `true` if a message at `level` for `namespace` should be emitted. */
 function shouldLog(level: LogLevel, namespace: string): boolean {
   // info/warn/error are always on
   if (LEVEL_PRIORITY[level] >= LEVEL_PRIORITY['info']) {
@@ -93,10 +94,12 @@ function shouldLog(level: LogLevel, namespace: string): boolean {
   return !isDebugSuppressed(namespace);
 }
 
+/** Wrap `namespace` in square brackets for log output (e.g. `[sync]`). */
 function formatPrefix(namespace: string): string {
   return `[${namespace}]`;
 }
 
+/** Create a closure that conditionally logs at the given level and namespace. */
 function createLogFn(
   level: LogLevel,
   namespace: string,

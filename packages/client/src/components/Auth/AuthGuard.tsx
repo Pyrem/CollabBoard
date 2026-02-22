@@ -6,6 +6,7 @@ interface AuthGuardProps {
   children: ReactNode;
 }
 
+/** Route guard that redirects to `/login` if the user is not authenticated. */
 export function AuthGuard({ children }: AuthGuardProps): React.JSX.Element {
   const { user, loading } = use(AuthContext);
 

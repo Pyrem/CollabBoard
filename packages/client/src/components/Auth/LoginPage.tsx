@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../../lib/firebase.js';
 import { AuthContext } from '../../hooks/useAuth.js';
 
+/** Login/signup page with Google OAuth and email/password authentication. */
 export function LoginPage(): React.JSX.Element {
   const { user } = use(AuthContext);
   const navigate = useNavigate();

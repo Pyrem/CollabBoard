@@ -21,25 +21,33 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
+/** Open the Google sign-in popup and return the authenticated user. */
 export async function signInWithGoogle(): Promise<User> {
   const result = await signInWithPopup(auth, googleProvider);
   return result.user;
 }
 
+/** Authenticate with email and password. */
 export async function signInWithEmail(email: string, password: string): Promise<User> {
   const result = await signInWithEmailAndPassword(auth, email, password);
   return result.user;
 }
 
+/** Create a new user account with email and password. */
 export async function signUpWithEmail(email: string, password: string): Promise<User> {
   const result = await createUserWithEmailAndPassword(auth, email, password);
   return result.user;
 }
 
+/** Sign out the current user. */
 export async function logOut(): Promise<void> {
   await signOut(auth);
 }
 
+/**
+ * Return the current user's Firebase ID token, or `null` if not signed in.
+ * If auth state hasn't resolved yet (e.g. page refresh), waits for it.
+ */
 export async function getIdToken(): Promise<string | null> {
   // If currentUser is already available, use it directly
   const user = auth.currentUser;

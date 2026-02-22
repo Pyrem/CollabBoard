@@ -90,6 +90,10 @@ httpServer.listen(PORT, () => {
 // ── Graceful shutdown ────────────────────────────────────────────────
 let shuttingDown = false;
 
+/**
+ * Gracefully shut down the server: stop accepting connections, flush
+ * Hocuspocus documents to SQLite, then close the database.
+ */
 function shutdown(signal: string): void {
   if (shuttingDown) return;
   shuttingDown = true;
