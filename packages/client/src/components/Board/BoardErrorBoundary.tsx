@@ -2,6 +2,8 @@ import { Component } from 'react';
 
 interface Props {
   children: React.ReactNode;
+  /** Fallback description shown below the heading. */
+  message?: string;
 }
 
 interface State {
@@ -38,8 +40,8 @@ export class BoardErrorBoundary extends Component<Props, State> {
         <div style={styles.card}>
           <h2 style={styles.heading}>Something went wrong</h2>
           <p style={styles.message}>
-            The board encountered a rendering error. Your data is safe — it's
-            synced via the server.
+            {this.props.message ??
+              'The board encountered a rendering error. Your data is safe — it\u2019s synced via the server.'}
           </p>
           {this.state.error && (
             <pre style={styles.detail}>{this.state.error.message}</pre>

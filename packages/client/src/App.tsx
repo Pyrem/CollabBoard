@@ -7,23 +7,25 @@ import { BoardErrorBoundary } from './components/Board/BoardErrorBoundary.js';
 
 export function App(): React.JSX.Element {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/board/:boardId"
-            element={
-              <AuthGuard>
-                <BoardErrorBoundary>
-                  <BoardPage />
-                </BoardErrorBoundary>
-              </AuthGuard>
-            }
-          />
-          <Route path="*" element={<Navigate to="/board/default" replace />} />
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+    <BoardErrorBoundary message="The application encountered an unexpected error. Please reload the page.">
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/board/:boardId"
+              element={
+                <AuthGuard>
+                  <BoardErrorBoundary>
+                    <BoardPage />
+                  </BoardErrorBoundary>
+                </AuthGuard>
+              }
+            />
+            <Route path="*" element={<Navigate to="/board/default" replace />} />
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </BoardErrorBoundary>
   );
 }
