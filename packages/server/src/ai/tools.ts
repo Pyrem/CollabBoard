@@ -196,15 +196,15 @@ export const aiTools: Anthropic.Tool[] = [
   {
     name: 'createDiagram',
     description:
-      'Create a structured diagram from a template. Use this for complex, multi-object layouts like SWOT analyses. The diagram will be automatically planned, laid out with proper spacing, and rendered with colour-coded elements. Do NOT manually create frames and stickies when a diagram template is available — use this tool instead.',
+      'Create a structured diagram from a template. Use this for complex, multi-object layouts like SWOT analyses or Kanban boards. The diagram will be automatically planned, laid out with proper spacing, and rendered with colour-coded elements. Do NOT manually create frames and stickies when a diagram template is available — use this tool instead.',
     input_schema: {
       type: 'object' as const,
       properties: {
         type: {
           type: 'string',
-          enum: ['swot'],
+          enum: ['swot', 'kanban'],
           description:
-            'The diagram template type. Currently supported: "swot" (SWOT analysis with 4 quadrants).',
+            'The diagram template type. Supported: "swot" (SWOT analysis with 4 quadrants), "kanban" (Kanban board with columns and cards).',
         },
         topic: {
           type: 'string',
