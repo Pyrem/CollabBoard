@@ -9,6 +9,7 @@ import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { aiTools } from './tools.js';
 import { SYSTEM_PROMPT } from './prompts.js';
 import { executeTool } from './executor.js';
+import { handleDiagram } from './diagrams/handleDiagram.js';
 
 const anthropic = wrapAnthropic(new Anthropic());
 
@@ -170,12 +171,21 @@ const handleAICommand = traceable(async function handleAICommand(
 
       for (const toolUse of toolUseBlocks) {
         toolCallCount++;
-        const result = executeTool(
-          toolUse.name,
-          toolUse.input as Record<string, unknown>,
-          doc,
-          userId,
-        );
+        const result =
+          toolUse.name === 'createDiagram'
+            ? await handleDiagram(
+                toolUse.input as Record<string, unknown>,
+                doc,
+                userId,
+                viewportCenter ?? { x: 960, y: 540 },
+                anthropic as unknown as Anthropic,
+              )
+            : executeTool(
+                toolUse.name,
+                toolUse.input as Record<string, unknown>,
+                doc,
+                userId,
+              );
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolUse.id,
