@@ -4,8 +4,16 @@ import { getObjectSyncThrottle, getAdaptiveThrottleMs, logger } from '@collabboa
 import type { BoardObject, Frame, Connector } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
 import { getBoardId, setBoardId, setFrameContent, createFrameFromData, findByBoardId, getNearestPorts, updateConnectorLine } from './fabricHelpers.js';
+import { findContainingFrame, findEvictedChildren, getAllFrames, getFrameBounds, isInsideFrame } from './containment.js';
 
 const log = logger('throttle');
+const containmentLog = logger('containment');
+
+/** Stroke color/width used to highlight a frame when an object is dragged over it. */
+const FRAME_HIGHLIGHT_STROKE = '#2196F3';
+const FRAME_HIGHLIGHT_STROKE_WIDTH = 3;
+const FRAME_NORMAL_STROKE = '#999';
+const FRAME_NORMAL_STROKE_WIDTH = 2;
 
 /**
  * Reposition all Fabric Line connectors attached to a given object.
@@ -28,10 +36,10 @@ function repositionConnectors(
   for (const obj of allObjects) {
     if (obj.type !== 'connector') continue;
     const conn = obj as Connector;
-    if (conn.fromId !== objectId && conn.toId !== objectId) continue;
+    if (conn.start.id !== objectId && conn.end.id !== objectId) continue;
 
-    const fromFab = findByBoardId(canvas, conn.fromId);
-    const toFab = findByBoardId(canvas, conn.toId);
+    const fromFab = findByBoardId(canvas, conn.start.id);
+    const toFab = findByBoardId(canvas, conn.end.id);
     if (!fromFab || !toFab) continue;
 
     const ports = getNearestPorts(fromFab, toFab);
@@ -76,6 +84,69 @@ export function attachLocalModifications(
   localUpdateIdsRef: MutableRefObject<Set<string>>,
   lastObjectSyncRef: MutableRefObject<Record<string, number>>,
 ): () => void {
+  // --- Frame-child drag tracking state ---
+  // Previous frame position during drag, for computing incremental deltas.
+  const framePrevPos: Record<string, { x: number; y: number }> = {};
+  // Currently highlighted frame (for visual feedback when dragging into a frame).
+  let highlightedFrameId: string | null = null;
+
+  /**
+   * Move all children of a frame on the local Fabric canvas by a delta.
+   * Visual-only (no Yjs writes). Also repositions connectors attached to children.
+   */
+  function moveFrameChildrenOnCanvas(
+    frameData: Frame,
+    deltaX: number,
+    deltaY: number,
+    writeToYjs: boolean,
+  ): void {
+    for (const childId of frameData.childrenIds) {
+      const childFab = findByBoardId(canvas, childId);
+      if (!childFab) continue;
+      childFab.set({
+        left: (childFab.left ?? 0) + deltaX,
+        top: (childFab.top ?? 0) + deltaY,
+      });
+      childFab.setCoords();
+      repositionConnectors(canvas, boardRef, childId, writeToYjs,
+        writeToYjs ? isLocalUpdateRef : undefined,
+        writeToYjs ? localUpdateIdsRef : undefined);
+    }
+  }
+
+  /**
+   * Reset any active frame highlight back to normal styling.
+   */
+  function clearFrameHighlight(): void {
+    if (!highlightedFrameId) return;
+    const frameFab = findByBoardId(canvas, highlightedFrameId);
+    if (frameFab && frameFab instanceof Group) {
+      const bg = frameFab.getObjects()[0];
+      if (bg) {
+        bg.set({ stroke: FRAME_NORMAL_STROKE, strokeWidth: FRAME_NORMAL_STROKE_WIDTH });
+        frameFab.dirty = true;
+      }
+    }
+    highlightedFrameId = null;
+  }
+
+  /**
+   * Highlight a frame's border to show it will accept a dropped object.
+   */
+  function setFrameHighlight(frameId: string): void {
+    if (highlightedFrameId === frameId) return;
+    clearFrameHighlight();
+    const frameFab = findByBoardId(canvas, frameId);
+    if (frameFab && frameFab instanceof Group) {
+      const bg = frameFab.getObjects()[0];
+      if (bg) {
+        bg.set({ stroke: FRAME_HIGHLIGHT_STROKE, strokeWidth: FRAME_HIGHLIGHT_STROKE_WIDTH });
+        frameFab.dirty = true;
+      }
+    }
+    highlightedFrameId = frameId;
+  }
+
   // canvas.on() returns a VoidFunction disposer in Fabric v6
   const disposeMoving = canvas.on('object:moving', (opt) => {
     if (isRemoteUpdateRef.current) return;
@@ -111,6 +182,29 @@ export function attachLocalModifications(
         y: decomposed.translateY,
       });
       isLocalUpdateRef.current = false;
+
+      // Move children of any frames in the selection visually (no Yjs writes)
+      for (const child of children) {
+        const childId = getBoardId(child);
+        if (!childId) continue;
+        const boardData = boardRef.current.getObject(childId);
+        if (boardData?.type !== 'frame') continue;
+        const childWorld = child.calcTransformMatrix();
+        const childDecomposed = util.qrDecompose(childWorld);
+        const frameX = childDecomposed.translateX;
+        const frameY = childDecomposed.translateY;
+        if (!framePrevPos[childId]) {
+          framePrevPos[childId] = { x: boardData.x, y: boardData.y };
+        }
+        const prev = framePrevPos[childId];
+        const deltaX = frameX - prev.x;
+        const deltaY = frameY - prev.y;
+        if (deltaX !== 0 || deltaY !== 0) {
+          moveFrameChildrenOnCanvas(boardData as Frame, deltaX, deltaY, false);
+          framePrevPos[childId] = { x: frameX, y: frameY };
+        }
+      }
+
       return;
     }
 
@@ -138,6 +232,38 @@ export function attachLocalModifications(
 
     // Update connected connectors visually (no Yjs write during drag)
     repositionConnectors(canvas, boardRef, id, false);
+
+    // Frame-specific: move children on canvas during drag
+    const boardData = boardRef.current.getObject(id);
+    if (boardData?.type === 'frame') {
+      const frameX = obj.left ?? 0;
+      const frameY = obj.top ?? 0;
+      if (!framePrevPos[id]) {
+        // First move event — seed from the Yjs data (position before drag)
+        framePrevPos[id] = { x: boardData.x, y: boardData.y };
+      }
+      const prev = framePrevPos[id];
+      const deltaX = frameX - prev.x;
+      const deltaY = frameY - prev.y;
+      if (deltaX !== 0 || deltaY !== 0) {
+        moveFrameChildrenOnCanvas(boardData as Frame, deltaX, deltaY, false);
+        framePrevPos[id] = { x: frameX, y: frameY };
+      }
+    }
+
+    // Non-frame: visual highlight if dragging over a frame
+    if (boardData && boardData.type !== 'frame') {
+      // Compute actual center (left/top is top-left corner in Fabric)
+      const objCenterX = (obj.left ?? 0) + (obj.width ?? 0) / 2;
+      const objCenterY = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+      const frames = getAllFrames(boardRef.current.getAllObjects());
+      const containingFrame = findContainingFrame(objCenterX, objCenterY, frames);
+      if (containingFrame) {
+        setFrameHighlight(containingFrame.id);
+      } else {
+        clearFrameHighlight();
+      }
+    }
   });
 
   const disposeScaling = canvas.on('object:scaling', (opt) => {
@@ -239,6 +365,16 @@ export function attachLocalModifications(
     // ActiveSelection: adaptive throttle, preview only the lead object's rotation
     if (obj instanceof ActiveSelection) {
       const children = obj.getObjects();
+
+      // If the selection contains a frame, block rotation entirely
+      const hasFrame = children.some((child) => {
+        const childId = getBoardId(child);
+        if (!childId) return false;
+        const data = boardRef.current.getObject(childId);
+        return data?.type === 'frame';
+      });
+      if (hasFrame) return;
+
       const lead = children[0];
       if (!lead) return;
       const leadId = getBoardId(lead);
@@ -363,6 +499,16 @@ export function attachLocalModifications(
         }
       }
 
+      // Snapshot old positions of frames in the selection so we can compute
+      // deltas for their children after the batch update.
+      const frameOldPositions: Record<string, { x: number; y: number }> = {};
+      for (const { id: updateId } of updates) {
+        const objData = boardRef.current.getObject(updateId);
+        if (objData?.type === 'frame') {
+          frameOldPositions[updateId] = { x: objData.x, y: objData.y };
+        }
+      }
+
       if (updates.length > 0) {
         isLocalUpdateRef.current = true;
         log.debug('object:modified ActiveSelection', {
@@ -371,6 +517,55 @@ export function attachLocalModifications(
         });
         boardRef.current.batchUpdateObjects(updates);
         isLocalUpdateRef.current = false;
+      }
+
+      // Move children of any frames that were part of the selection
+      for (const { id: updateId, updates: upd } of updates) {
+        const oldPos = frameOldPositions[updateId];
+        if (!oldPos) continue;
+        const frameData = boardRef.current.getObject(updateId);
+        if (frameData?.type !== 'frame') continue;
+        const frame = frameData as Frame;
+        const newX = upd.x ?? frame.x;
+        const newY = upd.y ?? frame.y;
+        const deltaX = newX - oldPos.x;
+        const deltaY = newY - oldPos.y;
+        if (deltaX === 0 && deltaY === 0) continue;
+
+        containmentLog.debug('group frame child move', {
+          frameId: updateId,
+          delta: { x: deltaX, y: deltaY },
+          childrenIds: frame.childrenIds,
+        });
+
+        const childUpdates: Array<{ id: string; updates: Partial<BoardObject> }> = [];
+        for (const childId of frame.childrenIds) {
+          const childFab = findByBoardId(canvas, childId);
+          if (!childFab) continue;
+          // During group drag, children weren't moved visually — compute from Yjs + delta
+          const childData = boardRef.current.getObject(childId);
+          if (!childData) continue;
+          const childNewX = childData.x + deltaX;
+          const childNewY = childData.y + deltaY;
+          childFab.set({ left: childNewX, top: childNewY });
+          childFab.setCoords();
+          localUpdateIdsRef.current.add(childId);
+          childUpdates.push({
+            id: childId,
+            updates: { x: childNewX, y: childNewY },
+          });
+        }
+        if (childUpdates.length > 0) {
+          isLocalUpdateRef.current = true;
+          boardRef.current.batchUpdateObjects(childUpdates);
+          isLocalUpdateRef.current = false;
+        }
+        // Reposition connectors for moved children
+        for (const childId of frame.childrenIds) {
+          repositionConnectors(canvas, boardRef, childId, true, isLocalUpdateRef, localUpdateIdsRef);
+        }
+        // Clean up drag tracking
+        delete framePrevPos[updateId];
       }
 
       // Reconstruct frame Groups that were resized (their internal children
@@ -396,6 +591,30 @@ export function attachLocalModifications(
       // Update connected connectors for all modified objects
       for (const { id: updateId } of updates) {
         repositionConnectors(canvas, boardRef, updateId, true, isLocalUpdateRef, localUpdateIdsRef);
+      }
+
+      // Containment check for each child in the group
+      clearFrameHighlight();
+      const allObjects = boardRef.current.getAllObjects();
+      const frames = getAllFrames(allObjects);
+      for (const { id: updateId } of updates) {
+        const droppedData = boardRef.current.getObject(updateId);
+        if (!droppedData || droppedData.type === 'frame' || droppedData.type === 'connector') continue;
+        const objCenterX = droppedData.x + droppedData.width / 2;
+        const objCenterY = droppedData.y + droppedData.height / 2;
+        const containingFrame = findContainingFrame(objCenterX, objCenterY, frames);
+        const currentParentId = droppedData.parentId ?? null;
+        const newParentId = containingFrame?.id ?? null;
+
+        if (currentParentId !== newParentId) {
+          containmentLog.debug('group reparent', { id: updateId, from: currentParentId, to: newParentId });
+          isLocalUpdateRef.current = true;
+          localUpdateIdsRef.current.add(updateId);
+          if (currentParentId) localUpdateIdsRef.current.add(currentParentId);
+          if (newParentId) localUpdateIdsRef.current.add(newParentId);
+          boardRef.current.reparent(updateId, currentParentId, newParentId);
+          isLocalUpdateRef.current = false;
+        }
       }
 
       canvas.renderAll();
@@ -424,10 +643,41 @@ export function attachLocalModifications(
       if (boardData?.type === 'frame') {
         const wasResized = Math.abs((obj.scaleX ?? 1) - 1) > 0.001 || Math.abs((obj.scaleY ?? 1) - 1) > 0.001;
 
+        containmentLog.debug('frame modified', {
+          frameId: id,
+          wasResized,
+          fabricObj: {
+            left: obj.left,
+            top: obj.top,
+            width: obj.width,
+            height: obj.height,
+            scaleX: obj.scaleX,
+            scaleY: obj.scaleY,
+          },
+          yjsBefore: {
+            x: boardData.x,
+            y: boardData.y,
+            width: boardData.width,
+            height: boardData.height,
+            childrenIds: (boardData as Frame).childrenIds,
+          },
+        });
+
         if (wasResized) {
           // Frames are resizable — compute actual dimensions from scale
           const actualWidth = (obj.width ?? 0) * (obj.scaleX ?? 1);
           const actualHeight = (obj.height ?? 0) * (obj.scaleY ?? 1);
+
+          containmentLog.debug('frame resize computed', {
+            frameId: id,
+            objWidth: obj.width,
+            objHeight: obj.height,
+            scaleX: obj.scaleX,
+            scaleY: obj.scaleY,
+            actualWidth,
+            actualHeight,
+            newPos: { x: obj.left ?? 0, y: obj.top ?? 0 },
+          });
 
           boardRef.current.updateObject(id, {
             x: obj.left ?? 0,
@@ -443,6 +693,23 @@ export function attachLocalModifications(
 
           const frameData = boardRef.current.getObject(id);
           if (frameData?.type === 'frame') {
+            containmentLog.debug('frame after Yjs write', {
+              frameId: id,
+              yjsAfter: {
+                x: frameData.x,
+                y: frameData.y,
+                width: frameData.width,
+                height: frameData.height,
+                childrenIds: (frameData as Frame).childrenIds,
+              },
+              bounds: {
+                left: frameData.x,
+                top: frameData.y,
+                right: frameData.x + frameData.width,
+                bottom: frameData.y + frameData.height,
+              },
+            });
+
             canvas.remove(obj);
             const newGroup = createFrameFromData(frameData as Frame);
             setBoardId(newGroup, id);
@@ -450,15 +717,78 @@ export function attachLocalModifications(
             canvas.add(newGroup);
             canvas.sendObjectToBack(newGroup);
             newGroup.setCoords();
+
+            // Evict children whose centers are now outside the resized frame
+            const allObjects = boardRef.current.getAllObjects();
+            const children = allObjects.filter((o) => o.parentId === id);
+            containmentLog.debug('eviction check', {
+              frameId: id,
+              frameBounds: {
+                left: frameData.x,
+                top: frameData.y,
+                right: frameData.x + frameData.width,
+                bottom: frameData.y + frameData.height,
+              },
+              children: children.map((c) => ({
+                id: c.id,
+                type: c.type,
+                pos: { x: c.x, y: c.y, w: c.width, h: c.height },
+                center: { x: c.x + c.width / 2, y: c.y + c.height / 2 },
+                insideFrame: (c.x + c.width / 2) >= frameData.x &&
+                  (c.x + c.width / 2) <= frameData.x + frameData.width &&
+                  (c.y + c.height / 2) >= frameData.y &&
+                  (c.y + c.height / 2) <= frameData.y + frameData.height,
+              })),
+            });
+
+            const evicted = findEvictedChildren(frameData as Frame, allObjects);
+            containmentLog.debug('eviction result', {
+              frameId: id,
+              evictedIds: evicted,
+              evictedCount: evicted.length,
+            });
+            for (const childId of evicted) {
+              localUpdateIdsRef.current.add(childId);
+              localUpdateIdsRef.current.add(id);
+              boardRef.current.removeFromFrame(childId, id);
+            }
           }
         } else {
-          // Position/rotation-only change — no reconstruction needed
-          boardRef.current.updateObject(id, {
-            x: obj.left ?? 0,
-            y: obj.top ?? 0,
-            rotation: obj.angle ?? 0,
+          // Position-only change (frames don't rotate) — batch-commit children positions
+          const frame = boardData as Frame;
+          const deltaX = (obj.left ?? 0) - boardData.x;
+          const deltaY = (obj.top ?? 0) - boardData.y;
+
+          containmentLog.debug('frame move commit', {
+            frameId: id,
+            from: { x: boardData.x, y: boardData.y },
+            to: { x: obj.left ?? 0, y: obj.top ?? 0 },
+            delta: { x: deltaX, y: deltaY },
+            childrenIds: frame.childrenIds,
           });
+
+          // Build batch: frame position + all children from their Fabric positions
+          const updates: Array<{ id: string; updates: Partial<BoardObject> }> = [
+            { id, updates: { x: obj.left ?? 0, y: obj.top ?? 0 } },
+          ];
+          for (const childId of frame.childrenIds) {
+            const childFab = findByBoardId(canvas, childId);
+            if (!childFab) continue;
+            localUpdateIdsRef.current.add(childId);
+            updates.push({
+              id: childId,
+              updates: { x: childFab.left ?? 0, y: childFab.top ?? 0 },
+            });
+          }
+          boardRef.current.batchUpdateObjects(updates);
+
+          // Reposition connectors for all moved children
+          for (const childId of frame.childrenIds) {
+            repositionConnectors(canvas, boardRef, childId, true, isLocalUpdateRef, localUpdateIdsRef);
+          }
         }
+        // Clean up drag tracking
+        delete framePrevPos[id];
       } else {
         // Sticky notes: position + rotation (fixed-size, no scale normalisation)
         boardRef.current.updateObject(id, {
@@ -487,6 +817,50 @@ export function attachLocalModifications(
 
     // Update connected connectors with Yjs write for remote sync
     repositionConnectors(canvas, boardRef, id, true, isLocalUpdateRef, localUpdateIdsRef);
+
+    // Containment check: only non-frame objects can join/leave frames on drop
+    const droppedData = boardRef.current.getObject(id);
+    containmentLog.debug('drop check', {
+      id,
+      type: droppedData?.type,
+      eligible: droppedData ? droppedData.type !== 'frame' && droppedData.type !== 'connector' : false,
+      dataExists: !!droppedData,
+    });
+    if (droppedData && droppedData.type !== 'frame' && droppedData.type !== 'connector') {
+      clearFrameHighlight();
+      // Compute actual center (x/y is top-left corner in Fabric)
+      const objCenterX = droppedData.x + droppedData.width / 2;
+      const objCenterY = droppedData.y + droppedData.height / 2;
+      const frames = getAllFrames(boardRef.current.getAllObjects());
+      const containingFrame = findContainingFrame(objCenterX, objCenterY, frames);
+      const currentParentId = droppedData.parentId ?? null;
+      const newParentId = containingFrame?.id ?? null;
+
+      containmentLog.debug('center & frame test', {
+        id,
+        objPos: { x: droppedData.x, y: droppedData.y, w: droppedData.width, h: droppedData.height },
+        center: { x: objCenterX, y: objCenterY },
+        frameCount: frames.length,
+        frames: frames.map((f) => ({
+          id: f.id,
+          bounds: { left: f.x, top: f.y, right: f.x + f.width, bottom: f.y + f.height },
+        })),
+        containingFrameId: containingFrame?.id ?? null,
+        currentParentId,
+        newParentId,
+        willReparent: currentParentId !== newParentId,
+      });
+
+      if (currentParentId !== newParentId) {
+        containmentLog.debug('reparent', { id, from: currentParentId, to: newParentId });
+        isLocalUpdateRef.current = true;
+        localUpdateIdsRef.current.add(id);
+        if (currentParentId) localUpdateIdsRef.current.add(currentParentId);
+        if (newParentId) localUpdateIdsRef.current.add(newParentId);
+        boardRef.current.reparent(id, currentParentId, newParentId);
+        isLocalUpdateRef.current = false;
+      }
+    }
 
     canvas.renderAll();
   });

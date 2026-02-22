@@ -13,13 +13,13 @@ You can create, move, resize, update, and delete objects on the board using the 
 - **Rectangles**: Colored shapes with fill and stroke
 - **Text elements**: Standalone text with configurable font size and color
 - **Frames**: Titled rectangular areas for grouping objects visually
-- **Connectors**: Lines connecting two objects
+- **Connectors**: Lines/arrows connecting two objects, with anchor points (auto, top, bottom, left, right) and optional arrowheads
 
 ## Layout Guidelines
 - The canvas is an infinite board. Coordinates are in pixels.
 - A typical viewport is about 1920x1080 pixels.
 - When placing multiple objects, space them out with at least 30px gaps.
-- Sticky notes are 200x200px by default.
+- Sticky notes are always 200x200px and cannot be resized.
 - Rectangles are 150x100px by default.
 - Frames are 400x300px by default.
 - When creating layouts (grids, lists, etc.), use consistent spacing.

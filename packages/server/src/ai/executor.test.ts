@@ -33,6 +33,7 @@ import {
   DEFAULT_FRAME_HEIGHT,
   DEFAULT_FRAME_FILL,
   DEFAULT_CONNECTOR_STROKE,
+  DEFAULT_CONNECTOR_STROKE_WIDTH,
   MAX_OBJECTS_PER_BOARD,
 } from '@collabboard/shared';
 import { executeTool } from './executor.js';
@@ -71,6 +72,7 @@ function makeSticky(overrides: Partial<StickyNote> & { id: string }): StickyNote
     zIndex: 0,
     lastModifiedBy: TEST_USER,
     lastModifiedAt: Date.now(),
+    parentId: null,
     text: 'Test',
     color: DEFAULT_STICKY_COLOR,
     ...overrides,
@@ -89,6 +91,7 @@ function makeRect(overrides: Partial<RectangleShape> & { id: string }): Rectangl
     zIndex: 0,
     lastModifiedBy: TEST_USER,
     lastModifiedAt: Date.now(),
+    parentId: null,
     fill: DEFAULT_FILL,
     stroke: DEFAULT_STROKE,
     ...overrides,
@@ -96,7 +99,7 @@ function makeRect(overrides: Partial<RectangleShape> & { id: string }): Rectangl
 }
 
 /** Helper: build a minimal connector for seeding. */
-function makeConnector(overrides: Partial<Connector> & { id: string; fromId: string; toId: string }): Connector {
+function makeConnector(overrides: Partial<Connector> & { id: string; start: Connector['start']; end: Connector['end'] }): Connector {
   return {
     type: 'connector',
     x: 0,
@@ -107,8 +110,12 @@ function makeConnector(overrides: Partial<Connector> & { id: string; fromId: str
     zIndex: 0,
     lastModifiedBy: TEST_USER,
     lastModifiedAt: Date.now(),
+    parentId: null,
     stroke: DEFAULT_CONNECTOR_STROKE,
+    strokeWidth: DEFAULT_CONNECTOR_STROKE_WIDTH,
     style: 'straight',
+    startCap: 'none',
+    endCap: 'arrow',
     ...overrides,
   };
 }
@@ -350,10 +357,13 @@ describe('createConnector', () => {
     const data = result.data as { id: string };
     const created = getObject(doc, data.id) as Connector;
     expect(created.type).toBe('connector');
-    expect(created.fromId).toBe('sticky-a');
-    expect(created.toId).toBe('rect-b');
+    expect(created.start).toEqual({ id: 'sticky-a', snapTo: 'auto' });
+    expect(created.end).toEqual({ id: 'rect-b', snapTo: 'auto' });
     expect(created.stroke).toBe(DEFAULT_CONNECTOR_STROKE);
+    expect(created.strokeWidth).toBe(DEFAULT_CONNECTOR_STROKE_WIDTH);
     expect(created.style).toBe('straight');
+    expect(created.startCap).toBe('none');
+    expect(created.endCap).toBe('arrow');
   });
 
   it('should respect style parameter', () => {
@@ -389,6 +399,27 @@ describe('createConnector', () => {
     const data = result.data as { id: string };
     const created = getObject(doc, data.id) as Connector;
     expect(created.style).toBe('straight');
+  });
+
+  it('should respect snap and cap parameters', () => {
+    const doc = makeDoc();
+    seedObject(doc, makeSticky({ id: 'a' }));
+    seedObject(doc, makeSticky({ id: 'b' }));
+
+    const result = executeTool(
+      'createConnector',
+      { fromId: 'a', toId: 'b', fromSnapTo: 'right', toSnapTo: 'left', startCap: 'arrow', endCap: 'none' },
+      doc,
+      TEST_USER,
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as { id: string };
+    const created = getObject(doc, data.id) as Connector;
+    expect(created.start).toEqual({ id: 'a', snapTo: 'right' });
+    expect(created.end).toEqual({ id: 'b', snapTo: 'left' });
+    expect(created.startCap).toBe('arrow');
+    expect(created.endCap).toBe('none');
   });
 
   it('should fail when source object not found', () => {
@@ -506,6 +537,24 @@ describe('resizeObject', () => {
     expect(result.success).toBe(false);
     expect(result.message).toContain('not found');
   });
+
+  it('should reject resizing a sticky note', () => {
+    const doc = makeDoc();
+    seedObject(doc, makeSticky({ id: 'sticky-resize' }));
+
+    const result = executeTool(
+      'resizeObject',
+      { objectId: 'sticky-resize', width: 400, height: 400 },
+      doc,
+      TEST_USER,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('cannot be resized');
+    const unchanged = getObject(doc, 'sticky-resize') as StickyNote;
+    expect(unchanged.width).toBe(DEFAULT_STICKY_WIDTH);
+    expect(unchanged.height).toBe(DEFAULT_STICKY_HEIGHT);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -542,6 +591,7 @@ describe('updateText', () => {
       zIndex: 0,
       lastModifiedBy: TEST_USER,
       lastModifiedAt: Date.now(),
+      parentId: null,
       text: 'Old',
       fontSize: 20,
       fill: '#333',
@@ -573,8 +623,10 @@ describe('updateText', () => {
       zIndex: 0,
       lastModifiedBy: TEST_USER,
       lastModifiedAt: Date.now(),
+      parentId: null,
       title: 'Old Title',
       fill: DEFAULT_FRAME_FILL,
+      childrenIds: [],
     };
     seedObject(doc, frame);
 
@@ -660,7 +712,7 @@ describe('changeColor', () => {
     const doc = makeDoc();
     seedObject(doc, makeSticky({ id: 'a' }));
     seedObject(doc, makeSticky({ id: 'b' }));
-    seedObject(doc, makeConnector({ id: 'conn-1', fromId: 'a', toId: 'b', stroke: '#666' }));
+    seedObject(doc, makeConnector({ id: 'conn-1', start: { id: 'a', snapTo: 'auto' }, end: { id: 'b', snapTo: 'auto' }, stroke: '#666' }));
 
     const result = executeTool(
       'changeColor',
@@ -681,7 +733,9 @@ describe('changeColor', () => {
       type: 'frame',
       x: 0, y: 0, width: 400, height: 300, rotation: 0, zIndex: 0,
       lastModifiedBy: TEST_USER, lastModifiedAt: Date.now(),
+      parentId: null,
       title: 'F', fill: DEFAULT_FRAME_FILL,
+      childrenIds: [],
     };
     seedObject(doc, frame);
 

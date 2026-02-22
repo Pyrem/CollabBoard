@@ -20,6 +20,7 @@ import {
   DEFAULT_FRAME_HEIGHT,
   DEFAULT_FRAME_FILL,
   DEFAULT_CONNECTOR_STROKE,
+  DEFAULT_CONNECTOR_STROKE_WIDTH,
   DEFAULT_TEXT_FONT_SIZE,
   DEFAULT_TEXT_FILL,
   DEFAULT_TEXT_WIDTH,
@@ -27,6 +28,7 @@ import {
   MAX_OBJECTS_PER_BOARD,
   validateBoardObject,
 } from '@collabboard/shared';
+import type { SnapPosition } from '@collabboard/shared';
 
 /** Result of executing a single tool call. */
 export interface ToolResult {
@@ -80,6 +82,7 @@ export function executeTool(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         text: (input['text'] as string) ?? '',
         color: (input['color'] as string) ?? DEFAULT_STICKY_COLOR,
       };
@@ -108,6 +111,7 @@ export function executeTool(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         fill: color,
         stroke: DEFAULT_STROKE,
       };
@@ -131,8 +135,10 @@ export function executeTool(
         zIndex: 0,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         title: (input['title'] as string) ?? 'Frame',
         fill: DEFAULT_FRAME_FILL,
+        childrenIds: [],
       };
       objectsMap.set(id, frame);
       return { success: true, message: `Created frame "${frame.title}" at (${String(frame.x)}, ${String(frame.y)})`, data: { id } };
@@ -156,6 +162,11 @@ export function executeTool(
         return { success: false, message: `Invalid connector style: "${String(style)}". Must be "straight" or "curved".` };
       }
 
+      const fromSnapTo = (input['fromSnapTo'] as SnapPosition | undefined) ?? 'auto';
+      const toSnapTo = (input['toSnapTo'] as SnapPosition | undefined) ?? 'auto';
+      const startCap = (input['startCap'] as 'none' | 'arrow' | undefined) ?? 'none';
+      const endCap = (input['endCap'] as 'none' | 'arrow' | undefined) ?? 'arrow';
+
       const id = uuidv4();
       const connector: Connector = {
         id,
@@ -168,10 +179,14 @@ export function executeTool(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
-        fromId,
-        toId,
+        parentId: null,
+        start: { id: fromId, snapTo: fromSnapTo },
+        end: { id: toId, snapTo: toSnapTo },
         stroke: DEFAULT_CONNECTOR_STROKE,
+        strokeWidth: DEFAULT_CONNECTOR_STROKE_WIDTH,
         style,
+        startCap,
+        endCap,
       };
       objectsMap.set(id, connector);
       return { success: true, message: `Created connector from ${fromId} to ${toId}`, data: { id } };
@@ -193,6 +208,7 @@ export function executeTool(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         text: (input['text'] as string) ?? '',
         fontSize: (input['fontSize'] as number | undefined) ?? DEFAULT_TEXT_FONT_SIZE,
         fill: (input['color'] as string | undefined) ?? DEFAULT_TEXT_FILL,
@@ -205,20 +221,44 @@ export function executeTool(
       const objectId = input['objectId'] as string;
       const existing = objectsMap.get(objectId) as BoardObject | undefined;
       if (!existing) return { success: false, message: `Object "${objectId}" not found` };
-      objectsMap.set(objectId, {
-        ...existing,
-        x: input['x'] as number,
-        y: input['y'] as number,
-        lastModifiedBy: userId,
-        lastModifiedAt: Date.now(),
+      const newX = input['x'] as number;
+      const newY = input['y'] as number;
+      const deltaX = newX - existing.x;
+      const deltaY = newY - existing.y;
+      doc.transact(() => {
+        objectsMap.set(objectId, {
+          ...existing,
+          x: newX,
+          y: newY,
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+        });
+        // If moving a frame, move all children by the same delta
+        if (existing.type === 'frame') {
+          const frame = existing as Frame;
+          for (const childId of frame.childrenIds) {
+            const child = objectsMap.get(childId) as BoardObject | undefined;
+            if (!child) continue;
+            objectsMap.set(childId, {
+              ...child,
+              x: child.x + deltaX,
+              y: child.y + deltaY,
+              lastModifiedBy: userId,
+              lastModifiedAt: Date.now(),
+            });
+          }
+        }
       });
-      return { success: true, message: `Moved object to (${String(input['x'])}, ${String(input['y'])})` };
+      return { success: true, message: `Moved object to (${String(newX)}, ${String(newY)})` };
     }
 
     case 'resizeObject': {
       const objectId = input['objectId'] as string;
       const existing = objectsMap.get(objectId) as BoardObject | undefined;
       if (!existing) return { success: false, message: `Object "${objectId}" not found` };
+      if (existing.type === 'sticky') {
+        return { success: false, message: `Sticky notes have a fixed size of 200x200px and cannot be resized` };
+      }
       objectsMap.set(objectId, {
         ...existing,
         width: input['width'] as number,

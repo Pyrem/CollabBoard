@@ -61,7 +61,7 @@ export function useObjectSync(
     if (!canvas) return;
 
     /**
-     * Reposition all connector Lines on canvas whose fromId or toId matches
+     * Reposition all connector Lines on canvas whose start.id or end.id matches
      * the given object ID. Called after a non-connector object is synced so
      * that remote clients see connectors follow their connected objects.
      */
@@ -70,13 +70,13 @@ export function useObjectSync(
         const obj = validateBoardObject(raw);
         if (!obj || obj.type !== 'connector') return;
         const conn = obj as Connector;
-        if (conn.fromId !== objectId && conn.toId !== objectId) return;
+        if (conn.start.id !== objectId && conn.end.id !== objectId) return;
 
         const lineObj = findByBoardId(canvas, key);
         if (!lineObj || !(lineObj instanceof Line)) return;
 
-        const fromObj = findByBoardId(canvas, conn.fromId);
-        const toObj = findByBoardId(canvas, conn.toId);
+        const fromObj = findByBoardId(canvas, conn.start.id);
+        const toObj = findByBoardId(canvas, conn.end.id);
         if (!fromObj || !toObj) return;
 
         const ports = getNearestPorts(fromObj, toObj);
@@ -143,9 +143,15 @@ export function useObjectSync(
             const frameData = data as Frame;
             const prev = getFrameContent(existing);
 
+            // Detect position change for child propagation
+            const oldLeft = existing.left ?? 0;
+            const oldTop = existing.top ?? 0;
+            const deltaX = frameData.x - oldLeft;
+            const deltaY = frameData.y - oldTop;
+
             if (prev && prev.title === frameData.title && prev.fill === frameData.fill &&
                 prev.width === frameData.width && prev.height === frameData.height) {
-              // Position/rotation-only change — lightweight update
+              // Position-only change — lightweight update
               existing.set({ left: frameData.x, top: frameData.y, angle: frameData.rotation });
               existing.setCoords();
             } else {
@@ -160,6 +166,23 @@ export function useObjectSync(
               group.setCoords();
               if (wasActive) {
                 canvas.setActiveObject(group);
+              }
+            }
+
+            // Propagate frame movement to children on canvas.
+            // During a remote drag, only the frame position is synced per tick;
+            // children positions arrive on drop. Moving them here keeps them
+            // visually attached while the remote user is still dragging.
+            if ((deltaX !== 0 || deltaY !== 0) && frameData.childrenIds.length > 0) {
+              for (const childId of frameData.childrenIds) {
+                const childFab = findByBoardId(canvas, childId);
+                if (!childFab) continue;
+                childFab.set({
+                  left: (childFab.left ?? 0) + deltaX,
+                  top: (childFab.top ?? 0) + deltaY,
+                });
+                childFab.setCoords();
+                refreshConnectorsFor(childId);
               }
             }
             break;
@@ -226,8 +249,8 @@ export function useObjectSync(
             let x2 = connData.width;
             let y2 = connData.height;
             if (x1 === 0 && y1 === 0 && x2 === 0 && y2 === 0) {
-              const fromObj = findByBoardId(canvas, connData.fromId);
-              const toObj = findByBoardId(canvas, connData.toId);
+              const fromObj = findByBoardId(canvas, connData.start.id);
+              const toObj = findByBoardId(canvas, connData.end.id);
               if (fromObj && toObj) {
                 const ports = getNearestPorts(fromObj, toObj);
                 x1 = ports.from.x;

@@ -26,11 +26,13 @@ import {
   DEFAULT_FRAME_FILL,
   DEFAULT_FRAME_TITLE,
   DEFAULT_CONNECTOR_STROKE,
+  DEFAULT_CONNECTOR_STROKE_WIDTH,
   MAX_OBJECTS_PER_BOARD,
   logger,
 } from '@collabboard/shared';
 
 const log = logger('batch');
+const containmentLog = logger('containment');
 
 export interface UseBoardReturn {
   createStickyNote: (x: number, y: number, text?: string, color?: string) => string | null;
@@ -47,6 +49,9 @@ export interface UseBoardReturn {
   batchUpdateObjects: (updates: Array<{ id: string; updates: Partial<BoardObject> }>) => void;
   batchDeleteObjects: (ids: string[]) => void;
   batchCreateObjects: (objects: BoardObject[]) => void;
+  addToFrame: (objectId: string, frameId: string) => void;
+  removeFromFrame: (objectId: string, frameId: string) => void;
+  reparent: (objectId: string, fromFrameId: string | null, toFrameId: string | null) => void;
 }
 
 /**
@@ -91,6 +96,7 @@ export function useBoard(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         text,
         color,
       };
@@ -120,6 +126,7 @@ export function useBoard(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         fill,
         stroke,
       };
@@ -149,6 +156,7 @@ export function useBoard(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         text,
         fontSize,
         fill,
@@ -179,8 +187,10 @@ export function useBoard(
         zIndex: 0, // Frames render behind everything
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
+        parentId: null,
         title,
         fill,
+        childrenIds: [],
       };
       objectsMap.set(id, frame);
       return id;
@@ -213,10 +223,14 @@ export function useBoard(
         zIndex: objectsMap.size,
         lastModifiedBy: userId,
         lastModifiedAt: Date.now(),
-        fromId,
-        toId,
+        parentId: null,
+        start: { id: fromId, snapTo: 'auto' },
+        end: { id: toId, snapTo: 'auto' },
         stroke,
+        strokeWidth: DEFAULT_CONNECTOR_STROKE_WIDTH,
         style: 'straight',
+        startCap: 'none',
+        endCap: 'arrow',
       };
       objectsMap.set(id, connector);
       return id;
@@ -359,6 +373,148 @@ export function useBoard(
     [objectsMap, userId],
   );
 
+  /**
+   * Add an object as a child of a frame.
+   * Sets the child's `parentId` and appends to the frame's `childrenIds`.
+   * Frames cannot be children of other frames.
+   * Batched in a single Yjs transaction.
+   */
+  const addToFrame = useCallback(
+    (objectId: string, frameId: string): void => {
+      if (!objectsMap) return;
+      const doc = objectsMap.doc;
+      if (!doc) return;
+      const child = objectsMap.get(objectId) as BoardObject | undefined;
+      const frame = objectsMap.get(frameId) as BoardObject | undefined;
+      if (!child || !frame || frame.type !== 'frame') return;
+      // Prevent frame nesting
+      if (child.type === 'frame') return;
+      const frameData = frame as Frame;
+      doc.transact(() => {
+        objectsMap.set(objectId, {
+          ...child,
+          parentId: frameId,
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+        });
+        objectsMap.set(frameId, {
+          ...frameData,
+          childrenIds: [...frameData.childrenIds, objectId],
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+        });
+      });
+    },
+    [objectsMap, userId],
+  );
+
+  /**
+   * Remove an object from a frame.
+   * Clears the child's `parentId` and removes from the frame's `childrenIds`.
+   * Batched in a single Yjs transaction.
+   */
+  const removeFromFrame = useCallback(
+    (objectId: string, frameId: string): void => {
+      if (!objectsMap) return;
+      const doc = objectsMap.doc;
+      if (!doc) return;
+      const child = objectsMap.get(objectId) as BoardObject | undefined;
+      const frame = objectsMap.get(frameId) as BoardObject | undefined;
+      if (!child || !frame || frame.type !== 'frame') return;
+      const frameData = frame as Frame;
+      doc.transact(() => {
+        objectsMap.set(objectId, {
+          ...child,
+          parentId: null,
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+        });
+        objectsMap.set(frameId, {
+          ...frameData,
+          childrenIds: frameData.childrenIds.filter((id) => id !== objectId),
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+        });
+      });
+    },
+    [objectsMap, userId],
+  );
+
+  /**
+   * Move an object from one frame to another (or to/from top-level).
+   * Handles all four cases: join, leave, switch, or no-op.
+   * Batched in a single Yjs transaction.
+   */
+  const reparent = useCallback(
+    (objectId: string, fromFrameId: string | null, toFrameId: string | null): void => {
+      if (!objectsMap) return;
+      if (fromFrameId === toFrameId) return;
+      const doc = objectsMap.doc;
+      if (!doc) return;
+      const child = objectsMap.get(objectId) as BoardObject | undefined;
+      if (!child) return;
+      // Prevent frame nesting
+      if (child.type === 'frame') return;
+
+      containmentLog.debug('reparent called', {
+        objectId,
+        objectType: child.type,
+        fromFrameId,
+        toFrameId,
+      });
+
+      doc.transact(() => {
+        // Remove from old frame
+        if (fromFrameId) {
+          const oldFrame = objectsMap.get(fromFrameId) as BoardObject | undefined;
+          containmentLog.debug('remove from old frame', {
+            fromFrameId,
+            oldFrameExists: !!oldFrame,
+            oldFrameType: oldFrame?.type,
+            oldChildrenIds: oldFrame?.type === 'frame' ? (oldFrame as Frame).childrenIds : [],
+          });
+          if (oldFrame?.type === 'frame') {
+            const oldFrameData = oldFrame as Frame;
+            objectsMap.set(fromFrameId, {
+              ...oldFrameData,
+              childrenIds: oldFrameData.childrenIds.filter((id) => id !== objectId),
+              lastModifiedBy: userId,
+              lastModifiedAt: Date.now(),
+            });
+          }
+        }
+        // Add to new frame
+        if (toFrameId) {
+          const newFrame = objectsMap.get(toFrameId) as BoardObject | undefined;
+          containmentLog.debug('add to new frame', {
+            toFrameId,
+            newFrameExists: !!newFrame,
+            newFrameType: newFrame?.type,
+            existingChildrenIds: newFrame?.type === 'frame' ? (newFrame as Frame).childrenIds : [],
+          });
+          if (newFrame?.type === 'frame') {
+            const newFrameData = newFrame as Frame;
+            objectsMap.set(toFrameId, {
+              ...newFrameData,
+              childrenIds: [...newFrameData.childrenIds, objectId],
+              lastModifiedBy: userId,
+              lastModifiedAt: Date.now(),
+            });
+          }
+        }
+        // Update child's parentId
+        containmentLog.debug('set child parentId', { objectId, parentId: toFrameId });
+        objectsMap.set(objectId, {
+          ...child,
+          parentId: toFrameId,
+          lastModifiedBy: userId,
+          lastModifiedAt: Date.now(),
+        });
+      });
+    },
+    [objectsMap, userId],
+  );
+
   return {
     createStickyNote,
     createRectangle,
@@ -374,5 +530,8 @@ export function useBoard(
     batchUpdateObjects,
     batchDeleteObjects,
     batchCreateObjects,
+    addToFrame,
+    removeFromFrame,
+    reparent,
   };
 }

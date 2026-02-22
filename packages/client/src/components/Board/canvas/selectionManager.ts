@@ -1,6 +1,6 @@
 import { Canvas as FabricCanvas, ActiveSelection } from 'fabric';
 import type { RefObject, MutableRefObject } from 'react';
-import type { BoardObject, Connector } from '@collabboard/shared';
+import type { BoardObject, Connector, Frame } from '@collabboard/shared';
 import { logger } from '@collabboard/shared';
 import type { useBoard } from '../../../hooks/useBoard.js';
 import type { SelectedObject, EditingState } from '../Canvas.js';
@@ -43,8 +43,8 @@ function describeObject(obj: BoardObject): Record<string, unknown> {
       base.fill = obj.fill;
       break;
     case 'connector':
-      base.fromId = obj.fromId;
-      base.toId = obj.toId;
+      base.startId = obj.start.id;
+      base.endId = obj.end.id;
       base.stroke = obj.stroke;
       break;
   }
@@ -53,7 +53,7 @@ function describeObject(obj: BoardObject): Record<string, unknown> {
 
 /**
  * Find and delete all connectors that reference any of the given object IDs.
- * Scans the board for connectors whose `fromId` or `toId` is in `deletedIds`.
+ * Scans the board for connectors whose `start.id` or `end.id` is in `deletedIds`.
  */
 function cascadeDeleteConnectors(
   board: ReturnType<typeof useBoard>,
@@ -63,13 +63,43 @@ function cascadeDeleteConnectors(
   for (const obj of board.getAllObjects()) {
     if (obj.type !== 'connector') continue;
     const conn = obj as Connector;
-    if (deletedIds.has(conn.fromId) || deletedIds.has(conn.toId)) {
+    if (deletedIds.has(conn.start.id) || deletedIds.has(conn.end.id)) {
       connectorIds.push(conn.id);
     }
   }
   if (connectorIds.length > 0) {
     log.debug('cascade-delete connectors', { count: connectorIds.length, ids: connectorIds });
     board.batchDeleteObjects(connectorIds);
+  }
+}
+
+/**
+ * Clean up frame-child relationships before deleting objects.
+ *
+ * - If deleting a frame: unparent all its children (don't delete them).
+ * - If deleting a child that has a parentId: remove it from the parent frame's childrenIds.
+ */
+function cleanupFrameRelationships(
+  board: ReturnType<typeof useBoard>,
+  deletedIds: Set<string>,
+): void {
+  for (const id of deletedIds) {
+    const obj = board.getObject(id);
+    if (!obj) continue;
+
+    if (obj.type === 'frame') {
+      // Unparent all children of this frame
+      const frame = obj as Frame;
+      for (const childId of frame.childrenIds) {
+        if (deletedIds.has(childId)) continue; // child is also being deleted
+        board.removeFromFrame(childId, id);
+      }
+    } else if (obj.parentId) {
+      // Remove this child from its parent frame's childrenIds
+      if (!deletedIds.has(obj.parentId)) {
+        board.removeFromFrame(id, obj.parentId);
+      }
+    }
   }
 }
 
@@ -97,8 +127,29 @@ export function attachSelectionManager(
     onSelectionChangeRef.current(null);
   };
 
-  canvas.on('selection:created', notifySelection);
-  canvas.on('selection:updated', notifySelection);
+  /** If the ActiveSelection contains a frame, lock rotation and hide the handle. */
+  const enforceFrameRotationLock = (): void => {
+    const active = canvas.getActiveObject();
+    if (!(active instanceof ActiveSelection)) return;
+    const hasFrame = active.getObjects().some((child) => {
+      const id = getBoardId(child);
+      if (!id) return false;
+      const data = boardRef.current.getObject(id);
+      return data?.type === 'frame';
+    });
+    if (hasFrame) {
+      active.lockRotation = true;
+      active.setControlVisible('mtr', false);
+    }
+  };
+
+  const onSelectionCreatedOrUpdated = (): void => {
+    notifySelection();
+    enforceFrameRotationLock();
+  };
+
+  canvas.on('selection:created', onSelectionCreatedOrUpdated);
+  canvas.on('selection:updated', onSelectionCreatedOrUpdated);
   canvas.on('selection:cleared', notifySelection);
 
   const handleKeyDown = (e: KeyboardEvent): void => {
@@ -130,6 +181,7 @@ export function attachSelectionManager(
       canvas.discardActiveObject();
       if (ids.length > 0) {
         log.debug('multi-delete', { count: ids.length, objects: details });
+        cleanupFrameRelationships(boardRef.current, new Set(ids));
         cascadeDeleteConnectors(boardRef.current, new Set(ids));
         boardRef.current.batchDeleteObjects(ids);
       }
@@ -141,6 +193,7 @@ export function attachSelectionManager(
       const detail = data ? describeObject(data) : { id, type: 'unknown' };
       canvas.discardActiveObject();
       log.debug('single-delete', detail);
+      cleanupFrameRelationships(boardRef.current, new Set([id]));
       cascadeDeleteConnectors(boardRef.current, new Set([id]));
       boardRef.current.deleteObject(id);
     }
@@ -151,8 +204,8 @@ export function attachSelectionManager(
   window.addEventListener('keydown', handleKeyDown);
 
   return () => {
-    canvas.off('selection:created', notifySelection);
-    canvas.off('selection:updated', notifySelection);
+    canvas.off('selection:created', onSelectionCreatedOrUpdated);
+    canvas.off('selection:updated', onSelectionCreatedOrUpdated);
     canvas.off('selection:cleared', notifySelection);
     window.removeEventListener('keydown', handleKeyDown);
   };
