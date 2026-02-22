@@ -1,6 +1,6 @@
 import * as Y from 'yjs';
 import { HocuspocusProvider } from '@hocuspocus/provider';
-import { getIdToken } from './firebase.js';
+import { getIdTokenOrThrow } from './firebase.js';
 
 /**
  * Resolve the Hocuspocus WebSocket URL from the environment.
@@ -57,10 +57,7 @@ export function createYjsProvider(boardId: string): {
     url: HOCUSPOCUS_URL,
     name: boardId,
     document: doc,
-    token: async () => {
-      const token = await getIdToken();
-      return token ?? '';
-    },
+    token: () => getIdTokenOrThrow(),
   });
 
   return { doc, provider };

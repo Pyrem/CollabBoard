@@ -92,7 +92,10 @@ export async function getIdToken(): Promise<string | null> {
   const user = auth.currentUser;
   if (user) return user.getIdToken();
 
-  // Otherwise wait for auth state to resolve (handles page refresh)
+  // Otherwise wait for auth state to resolve (handles page refresh).
+  // Firebase may need a moment to restore the session from IndexedDB,
+  // so we wait for the first onAuthStateChanged callback rather than
+  // assuming the user is signed out.
   return new Promise((resolve) => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       unsubscribe();
@@ -102,7 +105,71 @@ export async function getIdToken(): Promise<string | null> {
         resolve(null);
       }
     });
+
+    // Safety timeout — if auth state never resolves, don't hang forever
+    setTimeout(() => {
+      unsubscribe();
+      resolve(null);
+    }, 5_000);
   });
+}
+
+/**
+ * Wait until Firebase auth has fully resolved and return the ID token.
+ *
+ * Unlike {@link getIdToken}, this function waits through intermediate
+ * `null` states that can occur during Firebase session restoration.
+ * It polls `auth.currentUser` after `onAuthStateChanged` fires and,
+ * if still `null`, waits briefly for a second callback before giving up.
+ *
+ * Used by the Hocuspocus provider's `token` callback where a missing
+ * token causes a permanent connection failure.
+ *
+ * @returns A JWT string.
+ * @throws {Error} If no authenticated user is found within the timeout.
+ */
+export async function getIdTokenOrThrow(): Promise<string> {
+  // Fast path — user already available
+  const user = auth.currentUser;
+  if (user) return user.getIdToken();
+
+  // Wait for Firebase to finish restoring the session
+  const firebaseUser = await new Promise<User | null>((resolve) => {
+    let settled = false;
+
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      if (settled) return;
+      // If we get a user, resolve immediately
+      if (u) {
+        settled = true;
+        unsubscribe();
+        resolve(u);
+        return;
+      }
+      // First null callback — Firebase may still be restoring.
+      // Wait a short period for a second callback with the real user.
+      setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        unsubscribe();
+        resolve(auth.currentUser);
+      }, 1_000);
+    });
+
+    // Hard timeout
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      resolve(null);
+    }, 5_000);
+  });
+
+  if (!firebaseUser) {
+    throw new Error('Not authenticated — cannot obtain token');
+  }
+
+  return firebaseUser.getIdToken();
 }
 
 export { auth, onAuthStateChanged, type User };
