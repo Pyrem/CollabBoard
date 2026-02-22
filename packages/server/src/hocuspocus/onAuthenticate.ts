@@ -1,50 +1,68 @@
 import type { onAuthenticatePayload } from '@hocuspocus/server';
 import { getAuth } from './firebaseAdmin.js';
+import type { ConnectionLimiter, ConnectionToken } from '../middleware/connectionLimiter.js';
 
 /**
- * Hocuspocus `onAuthenticate` hook — invoked for every new WebSocket connection.
+ * Create a Hocuspocus `onAuthenticate` hook that verifies Firebase JWTs
+ * and enforces per-user WebSocket connection limits.
  *
- * Extracts the `token` from the connection payload, verifies it against
- * Firebase Admin SDK via {@link getAuth}, and on success attaches the decoded
- * user identity (`userId`, `displayName`, `photoURL`, `email`) to
- * `data.context` so downstream hooks and the awareness protocol can read it.
- * The connection is marked read-write (`readOnly = false`).
+ * @param connectionLimiter - Optional {@link ConnectionLimiter} instance.
+ *   When provided, the hook reads the connection token attached to the
+ *   incoming request during the `upgrade` event and calls
+ *   {@link ConnectionLimiter.associateUser} to enforce per-user limits.
+ *   If the limit is exceeded the connection is rejected.
  *
- * Throws an `Error` (which Hocuspocus translates into a WebSocket close frame)
- * if the token is missing or invalid, preventing unauthenticated access.
+ * @returns An async `onAuthenticate` handler suitable for
+ *   `Server.configure({ onAuthenticate })`.
+ */
+export function createOnAuthenticate(
+  connectionLimiter?: ConnectionLimiter,
+): (data: onAuthenticatePayload) => Promise<void> {
+  return async (data: onAuthenticatePayload): Promise<void> => {
+    const { token } = data;
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    try {
+      const auth = getAuth();
+      const decodedToken = await auth.verifyIdToken(token);
+
+      // Enforce per-user connection limit
+      if (connectionLimiter) {
+        const request = data.request as unknown as Record<string, unknown> | undefined;
+        const connToken = request?.['__connectionToken'] as ConnectionToken | undefined;
+
+        if (connToken && !connectionLimiter.associateUser(connToken, decodedToken.uid)) {
+          throw new Error('Connection limit reached for this user');
+        }
+      }
+
+      // Attach user info to connection context
+      data.connection.readOnly = false;
+      Object.assign(data.context, {
+        userId: decodedToken.uid,
+        displayName: decodedToken.name ?? 'Anonymous',
+        photoURL: decodedToken.picture ?? null,
+        email: decodedToken.email ?? null,
+      });
+    } catch (err) {
+      // Re-throw our own limit error as-is
+      if (err instanceof Error && err.message === 'Connection limit reached for this user') {
+        throw err;
+      }
+      throw new Error('Invalid authentication token');
+    }
+  };
+}
+
+/**
+ * Default `onAuthenticate` hook without connection limiting.
  *
- * @param data - Hocuspocus authentication payload containing the client-sent
- *   `token`, the mutable `connection` object, and a shared `context` bag.
- * @returns Resolves when the token has been verified and context populated.
- * @throws {Error} `"Authentication required"` when no token is provided.
- * @throws {Error} `"Invalid authentication token"` when Firebase rejects the JWT.
- *
- * @example
- * // Registered in the Hocuspocus server configuration:
- * const server = Server.configure({ onAuthenticate });
- *
- * @see {@link getAuth} for Firebase Admin SDK initialisation.
+ * @deprecated Prefer {@link createOnAuthenticate} with a
+ *   {@link ConnectionLimiter} for production use.
  */
 export async function onAuthenticate(data: onAuthenticatePayload): Promise<void> {
-  const { token } = data;
-
-  if (!token) {
-    throw new Error('Authentication required');
-  }
-
-  try {
-    const auth = getAuth();
-    const decodedToken = await auth.verifyIdToken(token);
-    // Attach user info to connection context
-    data.connection.readOnly = false;
-    // Store user info in context for use by other hooks
-    Object.assign(data.context, {
-      userId: decodedToken.uid,
-      displayName: decodedToken.name ?? 'Anonymous',
-      photoURL: decodedToken.picture ?? null,
-      email: decodedToken.email ?? null,
-    });
-  } catch {
-    throw new Error('Invalid authentication token');
-  }
+  return createOnAuthenticate()(data);
 }

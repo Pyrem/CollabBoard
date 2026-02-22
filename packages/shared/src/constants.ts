@@ -142,6 +142,14 @@ export const PRESENCE_COLORS = [
   '#85C1E9',
 ] as const;
 
+// ─── WebSocket connection limits ─────────────────────────────────────
+
+/** Maximum concurrent WebSocket connections allowed from a single IP address. */
+export const MAX_CONNECTIONS_PER_IP = 10;
+
+/** Maximum concurrent WebSocket connections allowed for a single authenticated user. */
+export const MAX_CONNECTIONS_PER_USER = 5;
+
 // ─── AI agent limits ─────────────────────────────────────────────────
 
 /** Maximum AI command requests per IP per minute (enforced by `express-rate-limit`). */

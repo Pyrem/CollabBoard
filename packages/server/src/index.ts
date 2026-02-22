@@ -6,22 +6,26 @@ import helmet from 'helmet';
 import { Server } from '@hocuspocus/server';
 import { Database } from '@hocuspocus/extension-database';
 import { WebSocketServer } from 'ws';
-import { onAuthenticate } from './hocuspocus/onAuthenticate.js';
+import { createOnAuthenticate } from './hocuspocus/onAuthenticate.js';
 import { onChange } from './hocuspocus/onChange.js';
 import { loadDocument, storeDocument, setupDatabase } from './hocuspocus/database.js';
 import { aiCommandHandler } from './ai/handler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
+import { ConnectionLimiter } from './middleware/connectionLimiter.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '3001', 10);
 const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? 'http://localhost:5173';
+
+// Connection limiter — enforces per-IP and per-user WebSocket limits
+const connectionLimiter = new ConnectionLimiter();
 
 // Initialize SQLite database for persistence
 const db = setupDatabase();
 
 // Hocuspocus server (no standalone listen — we handle upgrades manually)
 const hocuspocus = Server.configure({
-  onAuthenticate,
+  onAuthenticate: createOnAuthenticate(connectionLimiter),
   onChange,
   extensions: [
     new Database({
@@ -69,6 +73,11 @@ app.get('/api/health', (_req, res) => {
     checks,
     documentCount,
     connectionCount,
+    connectionLimits: {
+      totalTracked: connectionLimiter.totalConnections,
+      uniqueIps: connectionLimiter.trackedIpCount,
+      uniqueUsers: connectionLimiter.trackedUserCount,
+    },
   });
 });
 
@@ -78,9 +87,31 @@ app.post('/api/ai-command', createRateLimiter(), authMiddleware, aiCommandHandle
 const httpServer = createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
-// Handle WebSocket upgrade — hand off to Hocuspocus
+// Handle WebSocket upgrade — check per-IP limit, then hand off to Hocuspocus
 httpServer.on('upgrade', (request, socket, head) => {
+  const ip =
+    (request.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
+    request.socket.remoteAddress ??
+    'unknown';
+
+  const token = connectionLimiter.addConnection(ip);
+
+  if (token === null) {
+    console.warn(`[SERVER] WebSocket rejected: IP connection limit reached for ${ip}`);
+    socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
   wss.handleUpgrade(request, socket, head, (ws) => {
+    // Attach the limiter token to the request so onAuthenticate can access it
+    (request as unknown as Record<string, unknown>)['__connectionToken'] = token;
+    (request as unknown as Record<string, unknown>)['__connectionIp'] = ip;
+
+    ws.on('close', () => {
+      connectionLimiter.removeConnection(token);
+    });
+
     hocuspocus.handleConnection(ws, request);
   });
 });
