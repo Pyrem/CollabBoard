@@ -36,7 +36,6 @@ function repositionConnectors(
   for (const obj of allObjects) {
     if (obj.type !== 'connector') continue;
     const conn = obj as Connector;
-    if (!conn.start || !conn.end) continue;
     if (conn.start.id !== objectId && conn.end.id !== objectId) continue;
 
     const fromFab = findByBoardId(canvas, conn.start.id);
