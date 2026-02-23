@@ -354,3 +354,15 @@ export interface UserPresence {
   /** Last known cursor position, or `null` if the cursor is off-canvas. */
   cursor: CursorPosition | null;
 }
+
+// ─── Board metadata types ────────────────────────────────────────────
+
+/** Metadata for a board (stored in SQLite, separate from the Yjs document blob). */
+export interface BoardMetadata {
+  id: string;
+  title: string;
+  ownerId: string;
+  ownerName: string;
+  createdAt: number;
+  updatedAt: number;
+}
