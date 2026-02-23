@@ -1,5 +1,5 @@
-import { use, useCallback, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../hooks/useAuth.js';
 import { useYjs } from '../../hooks/useYjs.js';
 import { useBoard } from '../../hooks/useBoard.js';
@@ -34,6 +34,7 @@ import { BoardHeader } from './BoardHeader.js';
  */
 export function BoardPage(): React.JSX.Element {
   const { boardId = 'default' } = useParams<{ boardId: string }>();
+  const location = useLocation();
   const { user } = use(AuthContext);
   // user is guaranteed non-null by AuthGuard
   const yjs = useYjs(boardId, user!);
@@ -73,6 +74,27 @@ export function BoardPage(): React.JSX.Element {
     const center = getSceneCenterRef.current?.();
     void ai.sendCommand(command, boardId, center ?? undefined);
   }, [ai, boardId]);
+
+  const templateFiredRef = useRef(false);
+  useEffect(() => {
+    if (templateFiredRef.current || !yjs?.connected) return;
+    const state = location.state as { template?: string } | null;
+    if (!state?.template) return;
+
+    const TEMPLATE_PROMPTS: Record<string, string> = {
+      swot: 'Create a SWOT analysis board with four quadrants: Strengths (top-left, green), Weaknesses (top-right, red/pink), Opportunities (bottom-left, blue), and Threats (bottom-right, yellow/orange). Add a title sticky at the top. Include one example sticky note in each quadrant.',
+    };
+
+    const prompt = TEMPLATE_PROMPTS[state.template];
+    if (!prompt) return;
+    templateFiredRef.current = true;
+
+    // Small delay to let the canvas initialize and provide getSceneCenter
+    setTimeout(() => {
+      const center = getSceneCenterRef.current?.();
+      void ai.sendCommand(prompt, boardId, center ?? undefined);
+    }, 500);
+  }, [yjs?.connected, location.state, ai, boardId]);
 
   if (!yjs) {
     return (
