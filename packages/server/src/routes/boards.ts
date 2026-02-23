@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { randomUUID } from 'node:crypto';
+import { generateId } from '@collabboard/shared';
 import type BetterSqlite3 from 'better-sqlite3';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import {
@@ -24,7 +24,7 @@ export function createBoardRouter(db: BetterSqlite3.Database): Router {
       typeof req.body?.title === 'string' && req.body.title.trim()
         ? req.body.title.trim()
         : 'Untitled Board';
-    const board = createBoard(db, randomUUID(), title, userId, displayName ?? 'Anonymous');
+    const board = createBoard(db, generateId(), title, userId, displayName ?? 'Anonymous');
     res.status(201).json(board);
   });
 

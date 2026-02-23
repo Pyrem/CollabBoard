@@ -1,5 +1,4 @@
 import * as Y from 'yjs';
-import { v4 as uuidv4 } from 'uuid';
 import type {
   BoardObject,
   StickyNote,
@@ -10,6 +9,7 @@ import type {
   TextElement,
 } from '@collabboard/shared';
 import {
+  generateId,
   DEFAULT_STICKY_COLOR,
   DEFAULT_STICKY_WIDTH,
   DEFAULT_STICKY_HEIGHT,
@@ -103,7 +103,7 @@ export function executeTool(
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) {
         return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
       }
-      const id = uuidv4();
+      const id = generateId();
       const note: StickyNote = {
         id,
         type: 'sticky',
@@ -131,7 +131,7 @@ export function executeTool(
       if (shapeType !== 'rectangle' && shapeType !== 'circle') {
         return { success: false, message: `Unsupported shape type: "${shapeType}". Supported types: "rectangle", "circle".` };
       }
-      const id = uuidv4();
+      const id = generateId();
       const color = (input['color'] as string | undefined) ?? DEFAULT_FILL;
       const x = input['x'] as number;
       const y = input['y'] as number;
@@ -179,7 +179,7 @@ export function executeTool(
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) {
         return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
       }
-      const id = uuidv4();
+      const id = generateId();
       const frame: Frame = {
         id,
         type: 'frame',
@@ -223,7 +223,7 @@ export function executeTool(
       const startCap = (input['startCap'] as 'none' | 'arrow' | undefined) ?? 'none';
       const endCap = (input['endCap'] as 'none' | 'arrow' | undefined) ?? 'arrow';
 
-      const id = uuidv4();
+      const id = generateId();
       const connector: Connector = {
         id,
         type: 'connector',
@@ -252,7 +252,7 @@ export function executeTool(
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) {
         return { success: false, message: `Object limit reached (${String(MAX_OBJECTS_PER_BOARD)})` };
       }
-      const id = uuidv4();
+      const id = generateId();
       const textEl: TextElement = {
         id,
         type: 'text',

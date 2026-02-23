@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import * as Y from 'yjs';
-import { v4 as uuidv4 } from 'uuid';
 import type {
   BoardObject,
   StickyNote,
@@ -11,6 +10,7 @@ import type {
   Connector,
 } from '@collabboard/shared';
 import {
+  generateId,
   DEFAULT_STICKY_COLOR,
   DEFAULT_STICKY_WIDTH,
   DEFAULT_STICKY_HEIGHT,
@@ -97,7 +97,7 @@ export function useBoard(
     (x: number, y: number, text = '', color = DEFAULT_STICKY_COLOR): string | null => {
       if (!objectsMap) return null;
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
-      const id = uuidv4();
+      const id = generateId();
       const note: StickyNote = {
         id,
         type: 'sticky',
@@ -127,7 +127,7 @@ export function useBoard(
     (x: number, y: number, width = DEFAULT_RECT_WIDTH, height = DEFAULT_RECT_HEIGHT, fill = DEFAULT_FILL, stroke = DEFAULT_STROKE): string | null => {
       if (!objectsMap) return null;
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
-      const id = uuidv4();
+      const id = generateId();
       const rect: RectangleShape = {
         id,
         type: 'rectangle',
@@ -157,7 +157,7 @@ export function useBoard(
     (x: number, y: number, width = DEFAULT_CIRCLE_WIDTH, height = DEFAULT_CIRCLE_HEIGHT, fill = DEFAULT_FILL, stroke = DEFAULT_STROKE): string | null => {
       if (!objectsMap) return null;
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
-      const id = uuidv4();
+      const id = generateId();
       const circle: CircleShape = {
         id,
         type: 'circle',
@@ -187,7 +187,7 @@ export function useBoard(
     (x: number, y: number, text = 'Type here', fontSize = DEFAULT_TEXT_FONT_SIZE, fill = DEFAULT_TEXT_FILL): string | null => {
       if (!objectsMap) return null;
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
-      const id = uuidv4();
+      const id = generateId();
       const textElement: TextElement = {
         id,
         type: 'text',
@@ -218,7 +218,7 @@ export function useBoard(
     (x: number, y: number, title = DEFAULT_FRAME_TITLE, width = DEFAULT_FRAME_WIDTH, height = DEFAULT_FRAME_HEIGHT, fill = DEFAULT_FRAME_FILL): string | null => {
       if (!objectsMap) return null;
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
-      const id = uuidv4();
+      const id = generateId();
       const frame: Frame = {
         id,
         type: 'frame',
@@ -254,7 +254,7 @@ export function useBoard(
     (fromId: string, toId: string, fromX: number, fromY: number, toX: number, toY: number, stroke = DEFAULT_CONNECTOR_STROKE): string | null => {
       if (!objectsMap) return null;
       if (objectsMap.size >= MAX_OBJECTS_PER_BOARD) return null;
-      const id = uuidv4();
+      const id = generateId();
       const connector: Connector = {
         id,
         type: 'connector',
