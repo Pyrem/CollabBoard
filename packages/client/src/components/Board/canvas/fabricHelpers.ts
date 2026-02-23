@@ -358,6 +358,46 @@ export function createFrameFromData(frameData: Frame): Group {
 // Connection points & connectors
 // ---------------------------------------------------------------------------
 
+/**
+ * Internal interface for accessing Fabric.js methods not exposed in the
+ * public TypeScript declarations (e.g. `drawObject`, `calcLinePoints`).
+ */
+interface FabricLineInternal {
+  drawObject(ctx: CanvasRenderingContext2D, forClipping: boolean): void;
+  calcLinePoints(): { x1: number; y1: number; x2: number; y2: number };
+  stroke: string | null;
+}
+
+/**
+ * Draw a filled arrowhead triangle at the endpoint of a connector.
+ *
+ * The triangle points in the direction of the line (from → to) and is
+ * drawn at the `(toX, toY)` position. Called inside `drawObject` while
+ * the canvas context still has the Line's local transforms applied.
+ */
+function drawArrowhead(
+  ctx: CanvasRenderingContext2D,
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  size: number,
+  color: string,
+): void {
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  ctx.save();
+  ctx.translate(toX, toY);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-size, size / 2);
+  ctx.lineTo(-size, -size / 2);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
 interface Point {
   x: number;
   y: number;
@@ -442,6 +482,8 @@ export function getNearestPorts(
  * - `width`, `height` → to-point (fields repurposed for connectors)
  *
  * The line is non-transformable — its position is derived from connected objects.
+ * Arrowheads are rendered by overriding the Fabric `drawObject` method so
+ * that a filled triangle is drawn at the endpoint(s) after the line stroke.
  */
 export function createConnectorLine(data: Connector): Line {
   const x1 = data.x;
@@ -463,6 +505,31 @@ export function createConnectorLine(data: Connector): Line {
     hasBorders: true,
     perPixelTargetFind: true,
   });
+
+  // Store cap properties for arrowhead rendering
+  const lineExt = line as unknown as { _startCap: string; _endCap: string };
+  lineExt._startCap = data.startCap;
+  lineExt._endCap = data.endCap;
+
+  // Override drawObject to render arrowheads after the line is stroked.
+  // drawObject is called within render() while the canvas context still
+  // has the Line's local transforms applied (before ctx.restore()).
+  const internal = line as unknown as FabricLineInternal;
+  const origDrawObject = internal.drawObject.bind(line);
+  internal.drawObject = function (ctx: CanvasRenderingContext2D, forClipping: boolean): void {
+    origDrawObject(ctx, forClipping);
+    if (forClipping) return;
+
+    const points = internal.calcLinePoints();
+    const color = internal.stroke || DEFAULT_CONNECTOR_STROKE;
+
+    if (lineExt._endCap === 'arrow') {
+      drawArrowhead(ctx, points.x1, points.y1, points.x2, points.y2, CONNECTOR_ARROW_SIZE, color);
+    }
+    if (lineExt._startCap === 'arrow') {
+      drawArrowhead(ctx, points.x2, points.y2, points.x1, points.y1, CONNECTOR_ARROW_SIZE, color);
+    }
+  };
 
   setBoardId(line, data.id);
   return line;

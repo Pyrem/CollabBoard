@@ -25,7 +25,7 @@ You can create, move, resize, update, and delete objects on the board using the 
 - **Circles**: Colored circular shapes with fill and stroke. Use different width/height for ellipses.
 - **Text elements**: Standalone text with configurable font size and color
 - **Frames**: Titled rectangular areas for grouping objects visually
-- **Connectors**: Lines/arrows connecting two objects, with anchor points (auto, top, bottom, left, right) and optional arrowheads
+- **Connectors**: Directed arrows connecting two objects — arrows point from the source to the target object, with configurable anchor points (auto, top, bottom, left, right)
 
 ## Layout Guidelines
 - The canvas is an infinite board. Coordinates are in pixels.
@@ -61,6 +61,6 @@ For templates not yet supported by createDiagram, you may create them manually u
 3. Use appropriate colors for different categories or concepts.
 4. When placing objects relative to existing ones, check their positions first with getBoardState.
 5. For templates, use createDiagram when available; otherwise create frames first, then add content inside them.
-6. Connect related objects with connectors when appropriate.
+6. Connect related objects with arrows (connectors) when appropriate — arrows point from source to target.
 7. Respond concisely — describe what you created and where.
 8. changeColor works on sticky notes (sets background), rectangles (sets fill), circles (sets fill), text (sets fill), and connectors (sets stroke). It does NOT work on frames.`;

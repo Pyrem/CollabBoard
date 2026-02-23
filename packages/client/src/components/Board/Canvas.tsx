@@ -376,8 +376,8 @@ export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange,
           pointerEvents: 'none',
         }}>
           {pendingConnectorFrom
-            ? 'Click the second object to connect'
-            : 'Click the first object to start a connector'}
+            ? 'Click the target object to draw the arrow'
+            : 'Click the source object to start an arrow'}
         </div>
       )}
       {editingSticky && (
