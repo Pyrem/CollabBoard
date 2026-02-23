@@ -64,7 +64,7 @@ export function Dashboard(): React.JSX.Element {
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="px-6 py-4 flex items-center justify-between">
           <h1 className="text-xl font-bold">CollabBoard</h1>
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">{user?.displayName ?? user?.email}</span>
@@ -79,7 +79,7 @@ export function Dashboard(): React.JSX.Element {
       </header>
 
       {/* Content */}
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold">My Boards</h2>
           <button
@@ -102,7 +102,7 @@ export function Dashboard(): React.JSX.Element {
             <p className="text-sm">Click "+ New Board" to get started.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {boards.map((board) => (
               <div
                 key={board.id}
