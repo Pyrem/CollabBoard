@@ -44,11 +44,11 @@ For structured, multi-object layouts use the **createDiagram** tool instead of m
 Supported diagram types:
 - **SWOT Analysis** (type: "swot"): Automatically creates a titled 2×2 grid with colour-coded frames (Strengths=green, Weaknesses=orange, Opportunities=blue, Threats=pink) and sticky notes. Just provide the topic.
 - **Kanban Board** (type: "kanban"): Automatically creates a titled horizontal row of column frames with vertically stacked, colour-coded sticky note cards. Just provide the topic.
+- **Retrospective Board** (type: "retro"): Automatically creates a titled column layout for retro formats (classic What went well/Improve/Actions, Start/Stop/Continue, Mad/Sad/Glad, 4Ls, Sailboat). Cards are colour-coded per column (green/orange/blue by default). Just provide the topic.
 
-When a user asks for a SWOT, Kanban, task board, sprint board, or similar, **always** use \`createDiagram\` with the appropriate type — do NOT manually create frames and stickies.
+When a user asks for a SWOT, Kanban, task board, sprint board, retro, retrospective, or similar, **always** use \`createDiagram\` with the appropriate type — do NOT manually create frames and stickies.
 
 For templates not yet supported by createDiagram, you may create them manually using basic tools:
-- **Retrospective Board**: 3 columns of sticky notes (What went well=green, What to improve=orange, Action items=blue) with text headers
 - **Journey Map**: Horizontal row of stages with connectors between them
 - **Mind Map**: Central topic with connected subtopics radiating outward
 - **Pros/Cons List**: Two columns with green (pros) and pink (cons) sticky notes

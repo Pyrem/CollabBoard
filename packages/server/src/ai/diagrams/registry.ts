@@ -6,10 +6,12 @@
 import type { DiagramHandler } from './types.js';
 import { swotHandler } from './swot/index.js';
 import { kanbanHandler } from './kanban/index.js';
+import { retroHandler } from './retro/index.js';
 
 const registry = new Map<string, DiagramHandler>();
 registry.set('swot', swotHandler);
 registry.set('kanban', kanbanHandler);
+registry.set('retro', retroHandler);
 
 export { registry as diagramRegistry };
 
