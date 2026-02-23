@@ -61,16 +61,16 @@ export function Dashboard(): React.JSX.Element {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-warm-100">
       {/* Header */}
-      <header className="bg-white shadow-sm">
+      <header className="bg-warm-50 shadow-sm border-b border-warm-200">
         <div className="px-6 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold">CollabBoard</h1>
+          <h1 className="text-xl font-bold text-warm-800">CollabBoard</h1>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500">{user?.displayName ?? user?.email}</span>
+            <span className="text-sm text-warm-500">{user?.displayName ?? user?.email}</span>
             <button
               onClick={() => void handleLogout()}
-              className="px-3 py-1.5 text-[13px] font-semibold border border-gray-300 rounded-lg bg-white text-gray-700 cursor-pointer hover:bg-gray-50"
+              className="px-3 py-1.5 text-[13px] font-semibold border border-warm-300 rounded-lg bg-white text-warm-700 cursor-pointer hover:bg-warm-100"
             >
               Log out
             </button>
@@ -81,10 +81,10 @@ export function Dashboard(): React.JSX.Element {
       {/* Content */}
       <main className="px-6 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold">My Boards</h2>
+          <h2 className="text-lg font-semibold text-warm-800">My Boards</h2>
           <button
             onClick={() => void handleCreate()}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-500 text-white cursor-pointer hover:bg-blue-600 border-none"
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-amber-accent text-white cursor-pointer hover:bg-amber-hover border-none"
           >
             + New Board
           </button>
@@ -95,9 +95,9 @@ export function Dashboard(): React.JSX.Element {
         )}
 
         {loading ? (
-          <p className="text-gray-500 text-sm">Loading boards...</p>
+          <p className="text-warm-500 text-sm">Loading boards...</p>
         ) : boards.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
+          <div className="text-center py-16 text-warm-400">
             <p className="text-lg mb-2">No boards yet</p>
             <p className="text-sm">Click "+ New Board" to get started.</p>
           </div>
@@ -106,7 +106,7 @@ export function Dashboard(): React.JSX.Element {
             {boards.map((board) => (
               <div
                 key={board.id}
-                className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 cursor-pointer hover:shadow-md transition-shadow relative group"
+                className="bg-warm-50 rounded-xl shadow-sm border border-warm-200 p-5 cursor-pointer hover:shadow-md transition-shadow relative group"
                 onClick={() => void navigate(`/board/${board.id}`)}
                 role="button"
                 tabIndex={0}
@@ -114,8 +114,8 @@ export function Dashboard(): React.JSX.Element {
                   if (e.key === 'Enter') void navigate(`/board/${board.id}`);
                 }}
               >
-                <h3 className="font-semibold text-[15px] mb-1 pr-8">{board.title}</h3>
-                <p className="text-xs text-gray-400">
+                <h3 className="font-semibold text-[15px] mb-1 pr-8 text-warm-800">{board.title}</h3>
+                <p className="text-xs text-warm-400">
                   {new Date(board.updatedAt).toLocaleDateString(undefined, {
                     month: 'short',
                     day: 'numeric',
@@ -127,7 +127,7 @@ export function Dashboard(): React.JSX.Element {
                     e.stopPropagation();
                     void handleDelete(board.id);
                   }}
-                  className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer text-base"
+                  className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded text-warm-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer text-base"
                   aria-label="Delete board"
                 >
                   x

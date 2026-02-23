@@ -72,18 +72,18 @@ export function BoardHeader({ boardId, userId, onlineUsers }: BoardHeaderProps):
   );
 
   return (
-    <div className="h-12 bg-white border-b border-gray-200 flex items-center px-4 gap-4 z-[200] relative shrink-0">
+    <div className="h-12 bg-warm-50 border-b border-warm-200 flex items-center px-4 gap-4 z-[200] relative shrink-0">
       {/* Back to dashboard */}
       <button
         onClick={() => void navigate('/dashboard')}
-        className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 cursor-pointer bg-transparent border-none px-0"
+        className="flex items-center gap-1 text-sm text-warm-500 hover:text-warm-800 cursor-pointer bg-transparent border-none px-0"
       >
         <span className="text-base leading-none">&larr;</span>
         <span>Dashboard</span>
       </button>
 
       {/* Divider */}
-      <div className="w-px h-5 bg-gray-200" />
+      <div className="w-px h-5 bg-warm-200" />
 
       {/* Board title */}
       <div className="flex-1 min-w-0">
@@ -94,14 +94,14 @@ export function BoardHeader({ boardId, userId, onlineUsers }: BoardHeaderProps):
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={() => void saveTitle()}
             onKeyDown={handleKeyDown}
-            className="text-sm font-semibold bg-transparent border-none outline-none w-full px-1 py-0.5 rounded focus:ring-2 focus:ring-blue-300"
+            className="text-sm font-semibold bg-transparent border-none outline-none w-full px-1 py-0.5 rounded focus:ring-2 focus:ring-amber-accent/40 text-warm-800"
             maxLength={100}
           />
         ) : (
           <button
             onClick={startEditing}
-            className={`text-sm font-semibold truncate bg-transparent border-none px-1 py-0.5 rounded max-w-full text-left ${
-              isOwner ? 'cursor-pointer hover:bg-gray-100' : 'cursor-default'
+            className={`text-sm font-semibold truncate bg-transparent border-none px-1 py-0.5 rounded max-w-full text-left text-warm-800 ${
+              isOwner ? 'cursor-pointer hover:bg-warm-100' : 'cursor-default'
             }`}
             title={isOwner ? 'Click to rename' : displayTitle}
           >
@@ -111,12 +111,12 @@ export function BoardHeader({ boardId, userId, onlineUsers }: BoardHeaderProps):
       </div>
 
       {/* Online users count */}
-      <div className="flex items-center gap-1.5 text-sm text-gray-500 shrink-0">
+      <div className="flex items-center gap-1.5 text-sm text-warm-500 shrink-0">
         <div className="flex -space-x-1.5">
           {onlineUsers.slice(0, 5).map((u) => (
             <div
               key={u.userId}
-              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white border-2 border-white"
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white border-2 border-warm-50"
               style={{ backgroundColor: u.color }}
               title={u.displayName}
             >
@@ -129,9 +129,9 @@ export function BoardHeader({ boardId, userId, onlineUsers }: BoardHeaderProps):
           ))}
         </div>
         {onlineUsers.length > 5 && (
-          <span className="text-xs text-gray-400">+{onlineUsers.length - 5}</span>
+          <span className="text-xs text-warm-400">+{onlineUsers.length - 5}</span>
         )}
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-warm-400">
           {onlineUsers.length === 1 ? '1 online' : `${String(onlineUsers.length)} online`}
         </span>
       </div>

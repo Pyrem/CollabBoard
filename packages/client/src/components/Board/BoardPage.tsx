@@ -76,7 +76,7 @@ export function BoardPage(): React.JSX.Element {
 
   if (!yjs) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen bg-warm-100 text-warm-600">
         Connecting...
       </div>
     );
