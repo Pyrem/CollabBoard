@@ -1,5 +1,5 @@
 import { use, useCallback, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { AuthContext } from '../../hooks/useAuth.js';
 import { useYjs } from '../../hooks/useYjs.js';
 import { useBoard } from '../../hooks/useBoard.js';
@@ -9,8 +9,8 @@ import { useAI } from '../../hooks/useAI.js';
 import { Canvas, type SelectedObject, type SceneCenter, type ViewportState } from './Canvas.js';
 import { Toolbar } from '../Toolbar/Toolbar.js';
 import { CursorOverlay } from '../Cursors/CursorOverlay.js';
-import { PresencePanel } from '../Presence/PresencePanel.js';
 import { AIChat } from '../AIAgent/AIChat.js';
+import { BoardHeader } from './BoardHeader.js';
 
 /**
  * Main board page — the top-level orchestrator for a single board session.
@@ -35,7 +35,6 @@ import { AIChat } from '../AIAgent/AIChat.js';
 export function BoardPage(): React.JSX.Element {
   const { boardId = 'default' } = useParams<{ boardId: string }>();
   const { user } = use(AuthContext);
-  const navigate = useNavigate();
   // user is guaranteed non-null by AuthGuard
   const yjs = useYjs(boardId, user!);
 
@@ -84,33 +83,29 @@ export function BoardPage(): React.JSX.Element {
   }
 
   return (
-    <div className="relative w-full h-full">
-      <Canvas
-        objectsMap={yjs.objectsMap}
-        board={board}
-        userCount={onlineUsers.length}
-        activeTool={activeTool}
-        onToolChange={setActiveTool}
-        onCursorMove={updateLocalCursor}
-        onSelectionChange={handleSelectionChange}
-        onReady={handleCanvasReady}
-        onViewportChange={handleViewportChange}
-      />
-      <CursorOverlay cursors={remoteCursors} viewport={viewport} />
-      <Toolbar board={board} selectedObject={selectedObject} activeTool={activeTool} onToolChange={setActiveTool} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
-      <PresencePanel users={onlineUsers} />
-      <AIChat messages={ai.messages} isLoading={ai.isLoading} onSend={handleAISend} />
-      <button
-        onClick={() => void navigate('/dashboard')}
-        className="absolute top-3 right-3 px-3.5 py-1.5 text-[13px] font-semibold border border-gray-300 rounded-lg bg-white text-gray-700 cursor-pointer z-[100] hover:bg-gray-50"
-      >
-        My Boards
-      </button>
+    <div className="flex flex-col w-full h-screen">
+      <BoardHeader boardId={boardId} userId={userId} onlineUsers={onlineUsers} />
       {!yjs.connected && (
-        <div className="absolute top-0 left-0 right-0 bg-orange-500 text-white text-center p-2 text-sm font-semibold z-[1000]">
+        <div className="bg-orange-500 text-white text-center p-1.5 text-xs font-semibold z-[1000] shrink-0">
           Reconnecting...
         </div>
       )}
+      <div className="relative flex-1 min-h-0">
+        <Canvas
+          objectsMap={yjs.objectsMap}
+          board={board}
+          userCount={onlineUsers.length}
+          activeTool={activeTool}
+          onToolChange={setActiveTool}
+          onCursorMove={updateLocalCursor}
+          onSelectionChange={handleSelectionChange}
+          onReady={handleCanvasReady}
+          onViewportChange={handleViewportChange}
+        />
+        <CursorOverlay cursors={remoteCursors} viewport={viewport} />
+        <Toolbar board={board} selectedObject={selectedObject} activeTool={activeTool} onToolChange={setActiveTool} getSceneCenter={() => getSceneCenterRef.current?.() ?? { x: 0, y: 0 }} />
+        <AIChat messages={ai.messages} isLoading={ai.isLoading} onSend={handleAISend} />
+      </div>
     </div>
   );
 }
