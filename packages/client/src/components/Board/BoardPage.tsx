@@ -83,6 +83,7 @@ export function BoardPage(): React.JSX.Element {
 
     const TEMPLATE_PROMPTS: Record<string, string> = {
       swot: 'Make me a SWOT Analysis',
+      kanban: 'Make me a Kanban Board',
     };
 
     const prompt = TEMPLATE_PROMPTS[state.template];
