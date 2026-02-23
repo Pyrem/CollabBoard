@@ -40,8 +40,8 @@ function fakeAuth(req: Request, res: Response, next: NextFunction): void {
     res.status(401).json({ error: 'Not authenticated' });
     return;
   }
-  (req as Record<string, unknown>)['userId'] = userId;
-  (req as Record<string, unknown>)['displayName'] =
+  (req as unknown as Record<string, unknown>)['userId'] = userId;
+  (req as unknown as Record<string, unknown>)['displayName'] =
     (req.headers['x-test-display-name'] as string | undefined) ?? 'Test User';
   next();
 }
