@@ -94,6 +94,7 @@ export function BoardPage(): React.JSX.Element {
         <Canvas
           objectsMap={yjs.objectsMap}
           board={board}
+          boardId={boardId}
           userCount={onlineUsers.length}
           activeTool={activeTool}
           onToolChange={setActiveTool}

@@ -41,6 +41,13 @@ export function setupDatabase(): BetterSqlite3.Database {
     )
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_boards_owner ON boards(owner_id)');
+
+  // Migrate: add thumbnail column if it doesn't exist yet
+  const cols = db.prepare("PRAGMA table_info('boards')").all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'thumbnail')) {
+    db.exec('ALTER TABLE boards ADD COLUMN thumbnail BLOB');
+  }
+
   console.log(`[DB] SQLite database initialized at ${DB_PATH}`);
   return db;
 }
@@ -101,6 +108,7 @@ interface BoardRow {
   owner_name: string;
   created_at: number;
   updated_at: number;
+  has_thumbnail: number;
 }
 
 function rowToMetadata(row: BoardRow): BoardMetadata {
@@ -111,6 +119,7 @@ function rowToMetadata(row: BoardRow): BoardMetadata {
     ownerName: row.owner_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    hasThumbnail: row.has_thumbnail === 1,
   };
 }
 
@@ -125,7 +134,7 @@ export function createBoard(
   db.prepare(
     'INSERT INTO boards (id, title, owner_id, owner_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
   ).run(id, title, ownerId, ownerName, now, now);
-  return { id, title, ownerId, ownerName, createdAt: now, updatedAt: now };
+  return { id, title, ownerId, ownerName, createdAt: now, updatedAt: now, hasThumbnail: false };
 }
 
 export function listBoardsByOwner(
@@ -133,7 +142,9 @@ export function listBoardsByOwner(
   ownerId: string,
 ): BoardMetadata[] {
   const rows = db
-    .prepare('SELECT * FROM boards WHERE owner_id = ? ORDER BY updated_at DESC')
+    .prepare(
+      'SELECT id, title, owner_id, owner_name, created_at, updated_at, (thumbnail IS NOT NULL) AS has_thumbnail FROM boards WHERE owner_id = ? ORDER BY updated_at DESC',
+    )
     .all(ownerId) as BoardRow[];
   return rows.map(rowToMetadata);
 }
@@ -142,7 +153,11 @@ export function getBoard(
   db: BetterSqlite3.Database,
   id: string,
 ): BoardMetadata | null {
-  const row = db.prepare('SELECT * FROM boards WHERE id = ?').get(id) as BoardRow | undefined;
+  const row = db
+    .prepare(
+      'SELECT id, title, owner_id, owner_name, created_at, updated_at, (thumbnail IS NOT NULL) AS has_thumbnail FROM boards WHERE id = ?',
+    )
+    .get(id) as BoardRow | undefined;
   if (!row) return null;
   return rowToMetadata(row);
 }
@@ -165,4 +180,25 @@ export function deleteBoard(
     db.prepare('DELETE FROM documents WHERE name = ?').run(id);
   });
   del();
+}
+
+// ─── Thumbnail CRUD ───────────────────────────────────────────────────
+
+export function updateBoardThumbnail(
+  db: BetterSqlite3.Database,
+  id: string,
+  thumbnail: Buffer,
+): void {
+  db.prepare('UPDATE boards SET thumbnail = ? WHERE id = ?').run(thumbnail, id);
+}
+
+export function getBoardThumbnail(
+  db: BetterSqlite3.Database,
+  id: string,
+): Buffer | null {
+  const row = db.prepare('SELECT thumbnail FROM boards WHERE id = ?').get(id) as
+    | { thumbnail: Buffer | null }
+    | undefined;
+  if (!row?.thumbnail) return null;
+  return row.thumbnail;
 }
