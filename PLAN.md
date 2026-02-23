@@ -1,210 +1,260 @@
-# Throttling & Batch Operations Plan
+# Dashboard + Multi-Board Implementation Plan
 
-Modeled after CollabCanvas's approach, adapted for our Fabric.js + Yjs stack.
+Each step is self-contained and testable before moving to the next.
 
 ---
 
-## 1. Consolidate throttle constants (`packages/shared/src/constants.ts`)
+## Step 1 — Shared type: `BoardMetadata`
 
-Replace the scattered throttle values with a structured `THROTTLE` object and a combined adaptive function.
+**File**: `packages/shared/src/types.ts`
 
-**Before:**
+Add after the `UserPresence` interface:
+
 ```ts
-export const CURSOR_THROTTLE_MS = 30;
-export const OBJECT_SYNC_THROTTLE_MS = 50;
-export function getObjectSyncThrottle(userCount: number): number { ... }
-```
-
-**After:**
-```ts
-export const THROTTLE = {
-  CURSOR_MS: 30,          // normal cursor broadcast
-  CURSOR_HEAVY_MS: 100,   // cursor during heavy operations (group drag)
-  BASE_MS: 50,            // single-object sync minimum
-  PER_SHAPE_MS: 2,        // added per selected shape
-  MAX_MS: 500,            // absolute cap
-  COLOR_CHANGE_MS: 100,   // color picker debounce
-} as const;
-
-export function getAdaptiveThrottleMs(
-  userCount: number,
-  selectionSize: number,
-): number {
-  // User-count base: 50 / 100 / 200
-  let base: number;
-  if (userCount <= 5) base = 50;
-  else if (userCount <= 10) base = 100;
-  else base = 200;
-  // Selection-size overhead
-  return Math.min(base + THROTTLE.PER_SHAPE_MS * selectionSize, THROTTLE.MAX_MS);
+/** Metadata for a board (stored in SQLite, separate from the Yjs document blob). */
+export interface BoardMetadata {
+  id: string;           // UUID v4 — same key used in documents.name
+  title: string;        // user-facing board name
+  ownerId: string;      // Firebase UID of the creator
+  ownerName: string;    // display name at creation time
+  createdAt: number;    // epoch ms
+  updatedAt: number;    // epoch ms
 }
 ```
 
-Keep the old exports as deprecated aliases so nothing breaks mid-change:
-```ts
-/** @deprecated Use THROTTLE.CURSOR_MS */
-export const CURSOR_THROTTLE_MS = THROTTLE.CURSOR_MS;
-/** @deprecated Use getAdaptiveThrottleMs */
-export const OBJECT_SYNC_THROTTLE_MS = THROTTLE.BASE_MS;
-/** @deprecated Use getAdaptiveThrottleMs */
-export const getObjectSyncThrottle = (u: number) => getAdaptiveThrottleMs(u, 1);
+**Validate**: `pnpm --filter @collabboard/shared run build`
+
+---
+
+## Step 2 — Database: `boards` table + CRUD helpers
+
+**File**: `packages/server/src/hocuspocus/database.ts`
+
+### 2a. Schema — add inside `setupDatabase()`:
+
+```sql
+CREATE TABLE IF NOT EXISTS boards (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT 'Untitled Board',
+  owner_id TEXT NOT NULL,
+  owner_name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_boards_owner ON boards(owner_id);
 ```
 
+### 2b. New functions:
+
+| Function | Returns | SQL |
+|----------|---------|-----|
+| `createBoard(db, id, title, ownerId, ownerName)` | `BoardMetadata` | `INSERT INTO boards` |
+| `listBoardsByOwner(db, ownerId)` | `BoardMetadata[]` | `SELECT ... WHERE owner_id = ? ORDER BY updated_at DESC` |
+| `getBoard(db, id)` | `BoardMetadata \| null` | `SELECT ... WHERE id = ?` |
+| `updateBoardTitle(db, id, title)` | `void` | `UPDATE SET title, updated_at WHERE id = ?` |
+| `deleteBoard(db, id)` | `void` | Transaction: `DELETE FROM boards` + `DELETE FROM documents` |
+
+Row → `BoardMetadata` mapping: `{ id: row.id, title: row.title, ownerId: row.owner_id, ... }`
+
+### 2c. Tests
+
+**New file**: `packages/server/src/hocuspocus/database.boards.test.ts`
+
+- createBoard → getBoard returns it
+- listBoardsByOwner returns only that owner's boards (insert boards for 2 owners, verify isolation)
+- updateBoardTitle changes title + updates `updatedAt`
+- deleteBoard removes both `boards` and `documents` rows
+- getBoard returns null for non-existent ID
+
+**Validate**: `pnpm --filter @collabboard/server run test`
+
 ---
 
-## 2. Switch to `performance.now()` everywhere
+## Step 3 — Server REST API: board endpoints
 
-`Date.now()` is wall-clock and can jump on NTP sync or sleep/wake. `performance.now()` is monotonic and sub-ms precise.
+**New file**: `packages/server/src/routes/boards.ts`
 
-**Files affected:**
-- `packages/client/src/hooks/useCursors.ts` — `lastUpdateRef`
-- `packages/client/src/components/Board/canvas/localModifications.ts` — `lastObjectSyncRef`
+Export a factory function `boardsRouter(db)` that returns an `express.Router`.
+All routes are behind `authMiddleware` (applied at the `app.use` level in index.ts).
 
-Mechanical find-and-replace of `Date.now()` → `performance.now()` in throttle checks only (NOT in `lastModifiedAt` timestamps, which must remain wall-clock).
+### Endpoints:
 
----
+**POST /** — Create board
+- Body: `{ title?: string }`
+- Generate ID via `crypto.randomUUID()`
+- `createBoard(db, id, title ?? 'Untitled Board', req.userId, req.displayName ?? 'Anonymous')`
+- Response: `201 { board: BoardMetadata }`
 
-## 3. Add batch operations to `useBoard` (`packages/client/src/hooks/useBoard.ts`)
+**GET /** — List my boards
+- `listBoardsByOwner(db, req.userId)`
+- Response: `200 { boards: BoardMetadata[] }`
 
-Add three new methods wrapping mutations in `doc.transact()`:
+**GET /:id** — Get board metadata
+- `getBoard(db, id)` — any authenticated user can read metadata
+- Response: `200 { board }` or `404 { error: 'Board not found' }`
+
+**PATCH /:id** — Rename board
+- Body: `{ title: string }`
+- Verify `board.ownerId === req.userId` → 403 if not owner
+- `updateBoardTitle(db, id, title)`
+- Response: `200 { board }` (re-fetched)
+
+**DELETE /:id** — Delete board
+- Verify `board.ownerId === req.userId` → 403 if not owner
+- `deleteBoard(db, id)`
+- Response: `200 { deleted: true }`
+
+### Registration in `packages/server/src/index.ts`:
 
 ```ts
-batchUpdateObjects(updates: Array<{ id: string; updates: Partial<BoardObject> }>): void
-batchDeleteObjects(ids: string[]): void
-batchCreateObjects(objects: BoardObject[]): void
+import { boardsRouter } from './routes/boards.js';
+// After existing middleware setup:
+app.use('/api/boards', authMiddleware, boardsRouter(db));
 ```
 
-Each wraps the loop in `objectsMap.doc?.transact(() => { ... })`. This collapses N Yjs mutations into a single WebSocket message. The `clearAll` method already does this — we're generalizing the pattern.
+### Tests
 
-**Impact:** Group move of 20 objects sends 1 message instead of 20.
+**New file**: `packages/server/src/routes/boards.test.ts`
 
-Update the `UseBoardReturn` interface to include these.
+Use supertest against an Express app with in-memory SQLite. Mock `authMiddleware`
+to inject a test userId. Test all 5 endpoints + ownership enforcement (403 on
+rename/delete by non-owner).
+
+**Validate**: `pnpm --filter @collabboard/server run test`
 
 ---
 
-## 4. Handle ActiveSelection in `localModifications.ts`
+## Step 4 — Client API helper
 
-Currently, when Fabric fires `object:modified` on an `ActiveSelection` (multi-select), the code tries to read a single `boardId` and falls through. We need to decompose the group transform and batch-update all objects.
+**New file**: `packages/client/src/lib/api.ts`
 
-**Changes to `attachLocalModifications`:**
-
-Add a new `boardRef` parameter for `batchUpdateObjects` (available after step 3). Add a new parameter `selectionSizeRef` to enable adaptive throttling by selection count.
-
-In each handler (`object:moving`, `object:scaling`, `object:rotating`, `object:modified`), add an `ActiveSelection` branch:
+### Base client:
 
 ```ts
-import { ActiveSelection } from 'fabric';
-
-// In object:modified handler:
-if (obj instanceof ActiveSelection) {
-  const objects = obj.getObjects();
-  const updates = objects.map((child) => {
-    const childId = getBoardId(child);
-    if (!childId) return null;
-    // Decompose: get the child's absolute transform from the group
-    const transform = child.calcTransformMatrix();
-    const decomposed = util.qrDecompose(transform);
-    return {
-      id: childId,
-      updates: {
-        x: decomposed.translateX,
-        y: decomposed.translateY,
-        rotation: decomposed.angle,
-        width: (child.width ?? 0) * decomposed.scaleX,
-        height: (child.height ?? 0) * decomposed.scaleY,
-      },
-    };
-  }).filter(Boolean);
-
-  isLocalUpdateRef.current = true;
-  for (const u of updates) localUpdateIdsRef.current.add(u.id);
-  boardRef.current.batchUpdateObjects(updates);  // single Yjs transaction
-  isLocalUpdateRef.current = false;
-
-  // Reset scale on each child
-  for (const child of objects) {
-    child.set({ scaleX: 1, scaleY: 1 });
-    child.setCoords();
-  }
-  return;
+async function apiClient(path: string, options?: RequestInit): Promise<Response> {
+  const token = await auth.currentUser?.getIdToken();
+  const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+  return fetch(`${baseUrl}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers,
+    },
+  });
 }
 ```
 
-For the throttled intermediate events (`object:moving`, `object:scaling`, `object:rotating`), we use the adaptive throttle with selection size:
+### Typed wrappers:
 
 ```ts
-const selectionSize = (obj instanceof ActiveSelection)
-  ? obj.getObjects().length
-  : 1;
-const throttleMs = getAdaptiveThrottleMs(userCountRef.current, selectionSize);
+export async function createBoard(title?: string): Promise<BoardMetadata>
+export async function listMyBoards(): Promise<BoardMetadata[]>
+export async function getBoard(id: string): Promise<BoardMetadata>
+export async function updateBoardTitle(id: string, title: string): Promise<BoardMetadata>
+export async function deleteBoard(id: string): Promise<void>
 ```
 
-During intermediate group drags, we only broadcast the **bounding box position** (one update for the first object as a preview), then commit all objects on `object:modified`. This matches CollabCanvas's approach of only broadcasting one shape's intermediate state.
+Each calls `apiClient`, checks `response.ok`, parses JSON, and returns
+the typed result. Throws on non-ok status.
+
+**Validate**: `pnpm --filter @collabboard/client run typecheck`
 
 ---
 
-## 5. Handle multi-delete in `selectionManager.ts`
+## Step 5 — Dashboard page
 
-Currently delete only handles a single active object. Add ActiveSelection support:
+**New file**: `packages/client/src/components/Dashboard/DashboardPage.tsx`
 
-```ts
-import { ActiveSelection } from 'fabric';
+### Layout (matches LoginPage visual style):
 
-// In handleKeyDown:
-if (active instanceof ActiveSelection) {
-  const ids = active.getObjects()
-    .map(getBoardId)
-    .filter((id): id is string => id !== null);
-  canvas.discardActiveObject();
-  boardRef.current.batchDeleteObjects(ids);  // single Yjs transaction
-  onSelectionChangeRef.current(null);
-  return;
-}
 ```
+┌──────────────────────────────────────────┐
+│  CollabBoard          [user] [Sign Out]  │
+├──────────────────────────────────────────┤
+│                                          │
+│  [+ Create Board]      [Join by ID...]   │
+│                                          │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐   │
+│  │ Board 1 │ │ Board 2 │ │ Board 3 │   │
+│  │ Created  │ │ Created  │ │ Created  │   │
+│  │ Jan 15   │ │ Feb 2    │ │ Feb 20   │   │
+│  │  [✎] [🗑]│ │  [✎] [🗑]│ │  [✎] [🗑]│   │
+│  └─────────┘ └─────────┘ └─────────┘   │
+│                                          │
+│  Empty state: "No boards yet..."         │
+└──────────────────────────────────────────┘
+```
+
+### State:
+
+- `boards: BoardMetadata[]` — fetched on mount via `listMyBoards()`
+- `loading: boolean` — shows skeleton/spinner while fetching
+- `error: string | null`
+
+### Actions:
+
+- **Create**: prompt/inline input for title → `createBoard(title)` → navigate to `/board/:id`
+- **Open**: click card → `navigate('/board/' + board.id)`
+- **Rename**: pencil icon → inline input → `updateBoardTitle(id, newTitle)` → re-fetch list
+- **Delete**: trash icon → confirm dialog ("Delete [title]? This cannot be undone.") → `deleteBoard(id)` → remove from local state
+- **Join**: input field for board ID/URL → navigate to `/board/:id`
+- **Sign out**: `signOut(auth)` → navigate to `/login`
+
+**Validate**: Visual — dev server, log in, see dashboard.
 
 ---
 
-## 6. Two-tier cursor throttle (`packages/client/src/hooks/useCursors.ts`)
+## Step 6 — Routing update
 
-Add a `forceThrottle` parameter to `updateLocalCursor` for heavier throttling during group operations:
+### `packages/client/src/App.tsx`:
 
-```ts
-updateLocalCursor: (position: CursorPosition, heavy?: boolean) => void;
+- Add dashboard route:
+  ```tsx
+  <Route path="/dashboard" element={<AuthGuard><DashboardPage /></AuthGuard>} />
+  ```
+- Change wildcard: `<Navigate to="/dashboard" replace />`
 
-// Inside:
-const interval = heavy ? THROTTLE.CURSOR_HEAVY_MS : THROTTLE.CURSOR_MS;
-if (now - lastUpdateRef.current < interval) return;
-```
+### `packages/client/src/components/Auth/LoginPage.tsx`:
 
-Callers pass `heavy: true` when broadcasting cursor during a multi-object drag (called from `localModifications.ts` or `panZoom.ts` during interaction).
+- Change all `navigate('/board/default')` → `navigate('/dashboard')`
 
----
-
-## 7. Color change throttle (`packages/client/src/components/Toolbar/Toolbar.tsx`)
-
-Add a `lastColorChangeRef` to prevent flooding Yjs when clicking rapidly through colors:
-
-```ts
-const lastColorChangeRef = useRef(0);
-
-const handleColorChange = (color: string) => {
-  const now = performance.now();
-  if (now - lastColorChangeRef.current < THROTTLE.COLOR_CHANGE_MS) return;
-  lastColorChangeRef.current = now;
-  // ... existing color change logic
-};
-```
+**Validate**: Login → lands on `/dashboard`. Direct `/board/:id` URLs still work.
 
 ---
 
-## Summary of files changed
+## Step 7 — Board header with back navigation
 
-| File | Change |
-|------|--------|
-| `packages/shared/src/constants.ts` | Consolidated `THROTTLE` object, `getAdaptiveThrottleMs()`, deprecated aliases |
-| `packages/client/src/hooks/useBoard.ts` | Add `batchUpdateObjects`, `batchDeleteObjects`, `batchCreateObjects` |
-| `packages/client/src/hooks/useCursors.ts` | `performance.now()`, two-tier throttle via `heavy` param |
-| `packages/client/src/components/Board/canvas/localModifications.ts` | `performance.now()`, ActiveSelection decomposition + batch updates, selection-aware adaptive throttle |
-| `packages/client/src/components/Board/canvas/selectionManager.ts` | ActiveSelection multi-delete via `batchDeleteObjects` |
-| `packages/client/src/components/Toolbar/Toolbar.tsx` | Color change throttle |
-| `packages/client/src/components/Board/Canvas.tsx` | Wire the new batch methods through to the submodules |
+**Modify**: `packages/client/src/components/Board/BoardPage.tsx`
+
+Add a thin top bar (40–48px) above the existing canvas:
+
+```
+┌──────────────────────────────────────────┐
+│  ← Dashboard    Board Title    [users]   │
+├──────────────────────────────────────────┤
+│                                          │
+│            (existing canvas)             │
+│                                          │
+└──────────────────────────────────────────┘
+```
+
+- "← Dashboard" link → `navigate('/dashboard')`
+- Board title: fetch via `getBoard(boardId)` on mount. Show "Untitled Board" as fallback.
+  If the board doesn't exist in the `boards` table yet (e.g. old `/board/default` URL),
+  show just the `boardId`.
+- Inline-edit title if the current user is the owner (click title → input → blur/enter saves via `updateBoardTitle`)
+- Presence dots / online user count can move into this bar or stay separate.
+
+Adjust canvas container height to account for the header (`calc(100vh - 48px)` or similar).
+
+**Validate**: Navigate to board from dashboard, see header, click back.
+
+---
+
+## What's intentionally deferred
+
+- **Access control in Hocuspocus** — any authenticated user can still connect to any board by ID. This is fine: the URL is the share mechanism. Gating can be added later.
+- **Board member lists / roles** — not needed yet. Presence panel shows who's online.
+- **Board thumbnails / previews** — out of scope.
+- **Invite-by-email sharing** — URL sharing is sufficient for now.
