@@ -78,8 +78,13 @@ export function Dashboard(): React.JSX.Element {
         </div>
       </header>
 
+      {/* Tagline */}
+      <div className="text-center py-6 bg-warm-100">
+        <p className="text-warm-500 text-sm">Canvas creation and online and AI collaboration!</p>
+      </div>
+
       {/* Content */}
-      <main className="px-6 py-8">
+      <main className="max-w-5xl mx-auto px-6 py-8">
         {/* Templates */}
         <section className="mb-10">
           <h2 className="text-lg font-semibold text-warm-800 mb-3">Start from a template</h2>
