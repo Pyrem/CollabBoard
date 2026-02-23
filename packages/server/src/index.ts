@@ -13,6 +13,7 @@ import { aiCommandHandler } from './ai/handler.js';
 import { authMiddleware } from './middleware/auth.js';
 import { createRateLimiter } from './middleware/rateLimit.js';
 import { ConnectionLimiter } from './middleware/connectionLimiter.js';
+import { createBoardRouter } from './routes/boards.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '3001', 10);
 const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? 'http://localhost:5173';
@@ -81,6 +82,7 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+app.use('/api/boards', authMiddleware, createBoardRouter(db));
 app.post('/api/ai-command', createRateLimiter(), authMiddleware, aiCommandHandler(hocuspocus));
 
 // Single HTTP server for both Express and WebSocket

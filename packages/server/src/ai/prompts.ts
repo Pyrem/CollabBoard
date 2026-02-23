@@ -45,11 +45,13 @@ Supported diagram types:
 - **SWOT Analysis** (type: "swot"): Automatically creates a titled 2×2 grid with colour-coded frames (Strengths=green, Weaknesses=orange, Opportunities=blue, Threats=pink) and sticky notes. Just provide the topic.
 - **Kanban Board** (type: "kanban"): Automatically creates a titled horizontal row of column frames with vertically stacked, colour-coded sticky note cards. Just provide the topic.
 - **Retrospective Board** (type: "retro"): Automatically creates a titled column layout for retro formats (classic What went well/Improve/Actions, Start/Stop/Continue, Mad/Sad/Glad, 4Ls, Sailboat). Cards are colour-coded per column (green/orange/blue by default). Just provide the topic.
+- **Flowchart** (type: "flowchart"): Automatically creates a directed graph of colour-coded sticky notes connected by arrows. Supports process flows, decision trees, pipelines, user journeys, architecture diagrams — anything with steps and connections. Nodes are colour-coded by type: start=green, end=pink, process=blue, decision=orange. Layout is computed automatically (top-to-bottom or left-to-right). Just describe the process.
 
-When a user asks for a SWOT, Kanban, task board, sprint board, retro, retrospective, or similar, **always** use \`createDiagram\` with the appropriate type — do NOT manually create frames and stickies.
+When a user asks for a SWOT, Kanban, task board, sprint board, retro, retrospective, flowchart, process flow, pipeline, decision tree, user journey, or any diagram with connected steps, **always** use \`createDiagram\` with the appropriate type — do NOT manually create many stickies and connectors.
+
+IMPORTANT: For any request that would require creating more than ~6 connected objects, prefer \`createDiagram\` with type "flowchart" over manual tool calls. The flowchart type handles arbitrary directed graphs with automatic layout, so it works for almost any diagram that involves nodes and connections.
 
 For templates not yet supported by createDiagram, you may create them manually using basic tools:
-- **Journey Map**: Horizontal row of stages with connectors between them
 - **Mind Map**: Central topic with connected subtopics radiating outward
 - **Pros/Cons List**: Two columns with green (pros) and pink (cons) sticky notes
 

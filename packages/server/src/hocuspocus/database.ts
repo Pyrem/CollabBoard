@@ -1,5 +1,7 @@
 import BetterSqlite3 from 'better-sqlite3';
 import path from 'path';
+import type { BoardMetadata } from '@collabboard/shared';
+
 
 const DB_PATH = process.env['DB_PATH'] ?? path.join(process.cwd(), 'collabboard.sqlite');
 
@@ -28,6 +30,17 @@ export function setupDatabase(): BetterSqlite3.Database {
       data BLOB NOT NULL
     )
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS boards (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT 'Untitled Board',
+      owner_id TEXT NOT NULL,
+      owner_name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_boards_owner ON boards(owner_id)');
   console.log(`[DB] SQLite database initialized at ${DB_PATH}`);
   return db;
 }
@@ -77,4 +90,79 @@ export function storeDocument(
     documentName,
     Buffer.from(state),
   );
+}
+
+// ─── Board metadata CRUD ─────────────────────────────────────────────
+
+interface BoardRow {
+  id: string;
+  title: string;
+  owner_id: string;
+  owner_name: string;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToMetadata(row: BoardRow): BoardMetadata {
+  return {
+    id: row.id,
+    title: row.title,
+    ownerId: row.owner_id,
+    ownerName: row.owner_name,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function createBoard(
+  db: BetterSqlite3.Database,
+  id: string,
+  title: string,
+  ownerId: string,
+  ownerName: string,
+): BoardMetadata {
+  const now = Date.now();
+  db.prepare(
+    'INSERT INTO boards (id, title, owner_id, owner_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, title, ownerId, ownerName, now, now);
+  return { id, title, ownerId, ownerName, createdAt: now, updatedAt: now };
+}
+
+export function listBoardsByOwner(
+  db: BetterSqlite3.Database,
+  ownerId: string,
+): BoardMetadata[] {
+  const rows = db
+    .prepare('SELECT * FROM boards WHERE owner_id = ? ORDER BY updated_at DESC')
+    .all(ownerId) as BoardRow[];
+  return rows.map(rowToMetadata);
+}
+
+export function getBoard(
+  db: BetterSqlite3.Database,
+  id: string,
+): BoardMetadata | null {
+  const row = db.prepare('SELECT * FROM boards WHERE id = ?').get(id) as BoardRow | undefined;
+  if (!row) return null;
+  return rowToMetadata(row);
+}
+
+export function updateBoardTitle(
+  db: BetterSqlite3.Database,
+  id: string,
+  title: string,
+): void {
+  const now = Date.now();
+  db.prepare('UPDATE boards SET title = ?, updated_at = ? WHERE id = ?').run(title, now, id);
+}
+
+export function deleteBoard(
+  db: BetterSqlite3.Database,
+  id: string,
+): void {
+  const del = db.transaction(() => {
+    db.prepare('DELETE FROM boards WHERE id = ?').run(id);
+    db.prepare('DELETE FROM documents WHERE name = ?').run(id);
+  });
+  del();
 }

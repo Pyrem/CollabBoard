@@ -196,15 +196,15 @@ export const aiTools: Anthropic.Tool[] = [
   {
     name: 'createDiagram',
     description:
-      'Create a structured diagram from a template. Use this for complex, multi-object layouts like SWOT analyses, Kanban boards, or Retrospective boards. The diagram will be automatically planned, laid out with proper spacing, and rendered with colour-coded elements. Do NOT manually create frames and stickies when a diagram template is available — use this tool instead.',
+      'Create a structured diagram from a template or flowchart. Use this for any multi-object layout: SWOT analyses, Kanban boards, Retrospective boards, and especially for process flows, decision trees, pipelines, or any diagram that needs many connected components. The diagram will be automatically planned, laid out with proper spacing, and rendered with colour-coded elements. Do NOT manually create many stickies and connectors when createDiagram can handle it — use this tool instead.',
     input_schema: {
       type: 'object' as const,
       properties: {
         type: {
           type: 'string',
-          enum: ['swot', 'kanban', 'retro'],
+          enum: ['swot', 'kanban', 'retro', 'flowchart'],
           description:
-            'The diagram template type. Supported: "swot" (SWOT analysis with 4 quadrants), "kanban" (Kanban board with columns and cards), "retro" (Retrospective board — classic, Start/Stop/Continue, 4Ls, etc.).',
+            'The diagram template type. Supported: "swot" (SWOT analysis with 4 quadrants), "kanban" (Kanban board with columns and cards), "retro" (Retrospective board — classic, Start/Stop/Continue, 4Ls, etc.), "flowchart" (process flows, decision trees, pipelines — nodes connected by arrows, auto-laid-out).',
         },
         topic: {
           type: 'string',

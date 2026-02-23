@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
 import type { BoardObject, StickyNote, RectangleShape, CircleShape } from '@collabboard/shared';
 import {
+  generateId,
   DEFAULT_STICKY_COLOR,
   DEFAULT_STICKY_WIDTH,
   DEFAULT_STICKY_HEIGHT,
@@ -29,7 +30,7 @@ function createStickyNote(
   text = '',
   color = DEFAULT_STICKY_COLOR,
 ): string {
-  const id = crypto.randomUUID();
+  const id = generateId();
   const note: StickyNote = {
     id,
     type: 'sticky',
@@ -56,7 +57,7 @@ function createRectangle(
   width = DEFAULT_RECT_WIDTH,
   height = DEFAULT_RECT_HEIGHT,
 ): string {
-  const id = crypto.randomUUID();
+  const id = generateId();
   const rect: RectangleShape = {
     id,
     type: 'rectangle',
@@ -83,7 +84,7 @@ function createCircle(
   width = DEFAULT_CIRCLE_WIDTH,
   height = DEFAULT_CIRCLE_HEIGHT,
 ): string {
-  const id = crypto.randomUUID();
+  const id = generateId();
   const circle: CircleShape = {
     id,
     type: 'circle',

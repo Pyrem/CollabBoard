@@ -105,6 +105,7 @@ interface CanvasProps {
  * handler for sticky notes, because it sets React state (`editingSticky`).
  */
 export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
   const isRemoteUpdateRef = useRef(false);
@@ -142,11 +143,12 @@ export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange,
   // Initialize Fabric.js canvas — runs once on mount
   useEffect(() => {
     const canvasEl = canvasElRef.current;
-    if (!canvasEl) return;
+    const container = containerRef.current;
+    if (!canvasEl || !container) return;
 
     const canvas = new FabricCanvas(canvasEl, {
-      width: window.innerWidth,
-      height: window.innerHeight,
+      width: container.clientWidth,
+      height: container.clientHeight,
       backgroundColor: '#fafafa',
       selection: true,
     });
@@ -157,8 +159,9 @@ export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange,
       const zoom = canvas.getZoom();
       const vpt = canvas.viewportTransform;
       if (!vpt) return { x: 0, y: 0 };
-      const centerScreenX = window.innerWidth / 2;
-      const centerScreenY = window.innerHeight / 2;
+      const c = containerRef.current;
+      const centerScreenX = (c?.clientWidth ?? window.innerWidth) / 2;
+      const centerScreenY = (c?.clientHeight ?? window.innerHeight) / 2;
       return {
         x: (centerScreenX - vpt[4]) / zoom,
         y: (centerScreenY - vpt[5]) / zoom,
@@ -283,9 +286,11 @@ export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange,
     };
     canvas.on('mouse:down', onMouseDown);
 
-    // Handle window resize
+    // Handle window resize — use container dimensions, not window
     const handleResize = (): void => {
-      canvas.setDimensions({ width: window.innerWidth, height: window.innerHeight });
+      const c = containerRef.current;
+      if (!c) return;
+      canvas.setDimensions({ width: c.clientWidth, height: c.clientHeight });
     };
     window.addEventListener('resize', handleResize);
 
@@ -353,7 +358,7 @@ export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange,
   prevToolRef.current = activeTool;
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
       <canvas ref={canvasElRef} style={{ display: 'block' }} />
       {activeTool === 'connector' && (
         <div style={{
