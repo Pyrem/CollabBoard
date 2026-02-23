@@ -84,7 +84,7 @@ export function Dashboard(): React.JSX.Element {
       </div>
 
       {/* Content */}
-      <div className="px-6 py-8" style={{ maxWidth: '1024px', marginLeft: 'auto', marginRight: 'auto' }}>
+      <div className="px-6 py-8">
         {/* Templates */}
         <section className="mb-10">
           <h2 className="text-lg font-semibold text-warm-800 mb-3">Start from a template</h2>
