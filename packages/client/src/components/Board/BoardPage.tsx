@@ -1,7 +1,6 @@
 import { use, useCallback, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../hooks/useAuth.js';
-import { logOut } from '../../lib/firebase.js';
 import { useYjs } from '../../hooks/useYjs.js';
 import { useBoard } from '../../hooks/useBoard.js';
 import { useCursors } from '../../hooks/useCursors.js';
@@ -39,11 +38,6 @@ export function BoardPage(): React.JSX.Element {
   const navigate = useNavigate();
   // user is guaranteed non-null by AuthGuard
   const yjs = useYjs(boardId, user!);
-
-  const handleLogout = useCallback(async () => {
-    await logOut();
-    void navigate('/', { replace: true });
-  }, [navigate]);
 
   const userId = user?.uid ?? 'anonymous';
   const displayName = user?.displayName ?? 'Anonymous';
@@ -107,10 +101,10 @@ export function BoardPage(): React.JSX.Element {
       <PresencePanel users={onlineUsers} />
       <AIChat messages={ai.messages} isLoading={ai.isLoading} onSend={handleAISend} />
       <button
-        onClick={() => void handleLogout()}
+        onClick={() => void navigate('/dashboard')}
         className="absolute top-3 right-3 px-3.5 py-1.5 text-[13px] font-semibold border border-gray-300 rounded-lg bg-white text-gray-700 cursor-pointer z-[100] hover:bg-gray-50"
       >
-        Log out
+        My Boards
       </button>
       {!yjs.connected && (
         <div className="absolute top-0 left-0 right-0 bg-orange-500 text-white text-center p-2 text-sm font-semibold z-[1000]">

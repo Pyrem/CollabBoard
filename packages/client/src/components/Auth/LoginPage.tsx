@@ -26,14 +26,14 @@ export function LoginPage(): React.JSX.Element {
 
   useEffect(() => {
     if (user) {
-      void navigate('/board/default', { replace: true });
+      void navigate('/dashboard', { replace: true });
     }
   }, [user, navigate]);
 
   const handleGoogleSignIn = async (): Promise<void> => {
     try {
       await signInWithGoogle();
-      void navigate('/board/default');
+      void navigate('/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Google sign-in failed');
     }
@@ -48,7 +48,7 @@ export function LoginPage(): React.JSX.Element {
       } else {
         await signInWithEmail(email, password);
       }
-      void navigate('/board/default');
+      void navigate('/dashboard');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
     }
