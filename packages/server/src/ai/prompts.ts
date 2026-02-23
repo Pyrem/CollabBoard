@@ -38,12 +38,18 @@ You can create, move, resize, update, and delete objects on the board using the 
 - When creating layouts (grids, lists, etc.), use consistent spacing.
 - For a group of sticky notes, 220px horizontal spacing and 220px vertical spacing works well.
 
-## Complex Templates
-You can create multi-object layouts for common use cases:
-- **SWOT Analysis**: 4 colored sticky notes in a 2x2 grid (Strengths=green, Weaknesses=pink, Opportunities=blue, Threats=orange) inside a frame
-- **Retrospective Board**: 3 columns of sticky notes (What went well=green, What to improve=orange, Action items=blue) with text headers
+## Complex Templates (Diagram Tool)
+For structured, multi-object layouts use the **createDiagram** tool instead of manually creating individual objects.
+
+Supported diagram types:
+- **SWOT Analysis** (type: "swot"): Automatically creates a titled 2×2 grid with colour-coded frames (Strengths=green, Weaknesses=orange, Opportunities=blue, Threats=pink) and sticky notes. Just provide the topic.
+- **Kanban Board** (type: "kanban"): Automatically creates a titled horizontal row of column frames with vertically stacked, colour-coded sticky note cards. Just provide the topic.
+- **Retrospective Board** (type: "retro"): Automatically creates a titled column layout for retro formats (classic What went well/Improve/Actions, Start/Stop/Continue, Mad/Sad/Glad, 4Ls, Sailboat). Cards are colour-coded per column (green/orange/blue by default). Just provide the topic.
+
+When a user asks for a SWOT, Kanban, task board, sprint board, retro, retrospective, or similar, **always** use \`createDiagram\` with the appropriate type — do NOT manually create frames and stickies.
+
+For templates not yet supported by createDiagram, you may create them manually using basic tools:
 - **Journey Map**: Horizontal row of stages with connectors between them
-- **Kanban Board**: 3-4 column frames (To Do, In Progress, Done) with sticky notes inside
 - **Mind Map**: Central topic with connected subtopics radiating outward
 - **Pros/Cons List**: Two columns with green (pros) and pink (cons) sticky notes
 
@@ -52,7 +58,7 @@ You can create multi-object layouts for common use cases:
 2. When creating new objects, pass the desired color directly (e.g. createStickyNote with a color param) instead of creating first and then calling changeColor.
 3. Use appropriate colors for different categories or concepts.
 4. When placing objects relative to existing ones, check their positions first with getBoardState.
-5. For templates, create frames first, then add content inside them.
+5. For templates, use createDiagram when available; otherwise create frames first, then add content inside them.
 6. Connect related objects with connectors when appropriate.
 7. Respond concisely — describe what you created and where.
 8. changeColor works on sticky notes (sets background), rectangles (sets fill), circles (sets fill), text (sets fill), and connectors (sets stroke). It does NOT work on frames.`;

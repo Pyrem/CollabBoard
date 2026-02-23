@@ -7,7 +7,7 @@ import type Anthropic from '@anthropic-ai/sdk';
  * The `input_schema` follows JSON Schema and is sent verbatim to Claude so it
  * knows which parameters are available and required.
  *
- * **10 tools** organised into three categories:
+ * **11 tools** organised into four categories:
  *
  * | Category     | Tools                                                     |
  * |--------------|-----------------------------------------------------------|
@@ -15,6 +15,7 @@ import type Anthropic from '@anthropic-ai/sdk';
  * | Creation     | `createStickyNote`, `createShape`, `createText`,          |
  * |              | `createFrame`, `createConnector`                          |
  * | Manipulation | `moveObject`, `resizeObject`, `updateText`, `changeColor` |
+ * | Diagrams     | `createDiagram`                                           |
  *
  * @see {@link executeTool} for the server-side implementation of each tool.
  * @see {@link SYSTEM_PROMPT} for the instructions that accompany these tools.
@@ -190,6 +191,28 @@ export const aiTools: Anthropic.Tool[] = [
         color: { type: 'string', description: 'New color as hex string (e.g. "#FF0000")' },
       },
       required: ['objectId', 'color'],
+    },
+  },
+  {
+    name: 'createDiagram',
+    description:
+      'Create a structured diagram from a template. Use this for complex, multi-object layouts like SWOT analyses, Kanban boards, or Retrospective boards. The diagram will be automatically planned, laid out with proper spacing, and rendered with colour-coded elements. Do NOT manually create frames and stickies when a diagram template is available — use this tool instead.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['swot', 'kanban', 'retro'],
+          description:
+            'The diagram template type. Supported: "swot" (SWOT analysis with 4 quadrants), "kanban" (Kanban board with columns and cards), "retro" (Retrospective board — classic, Start/Stop/Continue, 4Ls, etc.).',
+        },
+        topic: {
+          type: 'string',
+          description:
+            'The subject or topic for the diagram (e.g. "launching a catering business", "our Q3 product strategy").',
+        },
+      },
+      required: ['type', 'topic'],
     },
   },
 ];

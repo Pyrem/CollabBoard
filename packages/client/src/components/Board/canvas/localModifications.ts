@@ -1,4 +1,4 @@
-import { Canvas as FabricCanvas, Group, ActiveSelection, Textbox, Line, util } from 'fabric';
+import { Canvas as FabricCanvas, Group, ActiveSelection, Textbox, Ellipse, Line, util } from 'fabric';
 import type { MutableRefObject, RefObject } from 'react';
 import { getObjectSyncThrottle, getAdaptiveThrottleMs, logger } from '@collabboard/shared';
 import type { BoardObject, Frame, Connector } from '@collabboard/shared';
@@ -494,7 +494,11 @@ export function attachLocalModifications(
           });
 
           // Normalise scale on the Fabric object
-          child.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
+          if (child instanceof Ellipse) {
+            child.set({ scaleX: 1, scaleY: 1, rx: actualWidth / 2, ry: actualHeight / 2 });
+          } else {
+            child.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
+          }
           child.setCoords();
         }
       }
@@ -809,7 +813,12 @@ export function attachLocalModifications(
         rotation: obj.angle ?? 0,
       });
 
-      obj.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
+      if (obj instanceof Ellipse) {
+        // Ellipse renders from rx/ry, not width/height — must update both
+        obj.set({ scaleX: 1, scaleY: 1, rx: actualWidth / 2, ry: actualHeight / 2 });
+      } else {
+        obj.set({ scaleX: 1, scaleY: 1, width: actualWidth, height: actualHeight });
+      }
       obj.setCoords();
     }
 

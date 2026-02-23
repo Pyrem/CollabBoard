@@ -15,6 +15,7 @@
     "@collabboard/shared": "workspace:*",
     "@hocuspocus/extension-database": "^2.15.0",
     "@hocuspocus/server": "^2.15.0",
+    "ajv": "^8.18.0",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
