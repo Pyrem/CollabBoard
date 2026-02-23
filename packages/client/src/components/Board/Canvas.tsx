@@ -17,7 +17,6 @@ import { attachLocalModifications } from './canvas/localModifications.js';
 import { getBoardId, findByBoardId, getNearestPorts } from './canvas/fabricHelpers.js';
 import { TextEditingOverlay } from './canvas/TextEditingOverlay.js';
 import { useObjectSync } from './canvas/useObjectSync.js';
-import { useThumbnailCapture } from '../../hooks/useThumbnailCapture.js';
 
 /** Minimal descriptor for the currently Fabric-selected board object. */
 export interface SelectedObject {
@@ -82,7 +81,6 @@ export interface EditingState {
 interface CanvasProps {
   objectsMap: Y.Map<unknown>;
   board: ReturnType<typeof useBoard>;
-  boardId: string;
   userCount: number;
   activeTool: string;
   onToolChange: (tool: string) => void;
@@ -106,7 +104,7 @@ interface CanvasProps {
  * The only business logic that remains here is the double-click-to-edit
  * handler for sticky notes, because it sets React state (`editingSticky`).
  */
-export function Canvas({ objectsMap, board, boardId, userCount, activeTool, onToolChange, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
+export function Canvas({ objectsMap, board, userCount, activeTool, onToolChange, onCursorMove, onSelectionChange, onReady, onViewportChange }: CanvasProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
@@ -311,9 +309,6 @@ export function Canvas({ objectsMap, board, boardId, userCount, activeTool, onTo
 
   // Yjs -> Fabric sync: initial load + live observer
   useObjectSync(fabricRef, objectsMap, isRemoteUpdateRef, isLocalUpdateRef, localUpdateIdsRef);
-
-  // Periodic thumbnail capture for dashboard preview
-  useThumbnailCapture(fabricRef, boardId, objectsMap);
 
   // Restore opacity on the Fabric Group being edited
   const restoreEditingGroup = useCallback((): void => {

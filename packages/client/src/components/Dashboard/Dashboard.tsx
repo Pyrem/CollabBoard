@@ -3,40 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { BoardMetadata } from '@collabboard/shared';
 import { AuthContext } from '../../hooks/useAuth.js';
 import { logOut } from '../../lib/firebase.js';
-import { listBoards, createBoard, deleteBoard, fetchThumbnail } from '../../lib/api.js';
-
-/** Thumbnail preview that fetches the image via the authenticated API. */
-function BoardThumbnail({ boardId }: { boardId: string }): React.JSX.Element {
-  const [src, setSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    let revoked = false;
-    void fetchThumbnail(boardId).then((url) => {
-      if (!revoked && url) setSrc(url);
-    });
-    return () => {
-      revoked = true;
-      if (src) URL.revokeObjectURL(src);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId]);
-
-  if (!src) {
-    return (
-      <div className="w-full h-[135px] bg-warm-200 rounded-t-xl flex items-center justify-center">
-        <span className="text-warm-400 text-xs">No preview</span>
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt="Board preview"
-      className="w-full h-[135px] object-cover rounded-t-xl"
-    />
-  );
-}
+import { listBoards, createBoard, deleteBoard } from '../../lib/api.js';
 
 /**
  * Dashboard page — lists the user's boards and lets them create or delete boards.
@@ -139,7 +106,7 @@ export function Dashboard(): React.JSX.Element {
             {boards.map((board) => (
               <div
                 key={board.id}
-                className="bg-warm-50 rounded-xl shadow-sm border border-warm-200 cursor-pointer hover:shadow-md transition-shadow relative group overflow-hidden"
+                className="bg-warm-50 rounded-xl shadow-sm border border-warm-200 p-5 cursor-pointer hover:shadow-md transition-shadow relative group"
                 onClick={() => void navigate(`/board/${board.id}`)}
                 role="button"
                 tabIndex={0}
@@ -147,23 +114,14 @@ export function Dashboard(): React.JSX.Element {
                   if (e.key === 'Enter') void navigate(`/board/${board.id}`);
                 }}
               >
-                {board.hasThumbnail ? (
-                  <BoardThumbnail boardId={board.id} />
-                ) : (
-                  <div className="w-full h-[135px] bg-warm-200 rounded-t-xl flex items-center justify-center">
-                    <span className="text-warm-400 text-xs">No preview</span>
-                  </div>
-                )}
-                <div className="p-4">
-                  <h3 className="font-semibold text-[15px] mb-1 pr-8 text-warm-800">{board.title}</h3>
-                  <p className="text-xs text-warm-400">
-                    {new Date(board.updatedAt).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </p>
-                </div>
+                <h3 className="font-semibold text-[15px] mb-1 pr-8 text-warm-800">{board.title}</h3>
+                <p className="text-xs text-warm-400">
+                  {new Date(board.updatedAt).toLocaleDateString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </p>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

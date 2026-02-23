@@ -365,6 +365,4 @@ export interface BoardMetadata {
   ownerName: string;
   createdAt: number;
   updatedAt: number;
-  /** Whether a thumbnail preview image exists for this board. */
-  hasThumbnail: boolean;
 }

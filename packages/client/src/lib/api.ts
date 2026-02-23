@@ -63,28 +63,3 @@ export async function deleteBoard(id: string): Promise<void> {
   const res = await authFetch(`/api/boards/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`Failed to delete board: ${String(res.status)}`);
 }
-
-export async function uploadThumbnail(boardId: string, blob: Blob): Promise<void> {
-  const token = await getIdToken();
-  if (!token) throw new Error('Not authenticated');
-  const res = await fetch(`${API_BASE}/api/boards/${boardId}/thumbnail`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': blob.type,
-      Authorization: `Bearer ${token}`,
-    },
-    body: blob,
-  });
-  if (!res.ok) throw new Error(`Failed to upload thumbnail: ${String(res.status)}`);
-}
-
-export async function fetchThumbnail(boardId: string): Promise<string | null> {
-  try {
-    const res = await authFetch(`/api/boards/${boardId}/thumbnail`);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return URL.createObjectURL(blob);
-  } catch {
-    return null;
-  }
-}
