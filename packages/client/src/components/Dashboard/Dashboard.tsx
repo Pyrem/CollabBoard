@@ -105,7 +105,7 @@ export function Dashboard(): React.JSX.Element {
 
         {/* User's boards */}
         <section>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4 mb-4">
             <h2 className="text-lg font-semibold text-warm-800">Your Boards</h2>
             <button
               onClick={() => void handleCreate()}
