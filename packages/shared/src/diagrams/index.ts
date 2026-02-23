@@ -1,3 +1,4 @@
 export * from './swot.js';
 export * from './kanban.js';
 export * from './retro.js';
+export * from './flowchart.js';
