@@ -30,8 +30,8 @@ type Tool = 'select' | 'sticky' | 'rectangle' | 'circle' | 'text' | 'frame' | 'c
 const FONT_SIZES = [14, 20, 28, 36, 48] as const;
 
 const toolBtnBase =
-  'px-3.5 py-1.5 border border-gray-300 rounded-lg bg-white cursor-pointer text-[13px] font-medium hover:bg-gray-50';
-const toolBtnActive = 'bg-blue-50 border-blue-500 text-blue-800';
+  'px-3.5 py-1.5 border border-warm-300 rounded-lg bg-warm-50 cursor-pointer text-[13px] font-medium hover:bg-warm-100 text-warm-700';
+const toolBtnActive = 'bg-amber-light border-amber-accent text-warm-800';
 
 /**
  * Bottom-anchored toolbar for tool selection, object creation, colour picking,
@@ -133,7 +133,7 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
   };
 
   return (
-    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-white rounded-xl shadow-lg px-3 py-2 flex items-center gap-2 z-[100]">
+    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 bg-warm-50 rounded-xl shadow-lg px-3 py-2 flex items-center gap-2 z-[100] border border-warm-200">
       <button
         className={`${toolBtnBase} ${activeTool === 'select' ? toolBtnActive : ''}`}
         onClick={() => onToolChange('select')}
@@ -184,10 +184,10 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
         Connect
       </button>
 
-      <div className="w-px h-6 bg-gray-300 mx-1" />
+      <div className="w-px h-6 bg-warm-300 mx-1" />
 
       <button
-        className="px-3.5 py-1.5 border border-red-300 rounded-lg bg-white text-red-800 cursor-pointer text-[13px] font-medium hover:bg-red-50"
+        className="px-3.5 py-1.5 border border-red-300 rounded-lg bg-warm-50 text-red-800 cursor-pointer text-[13px] font-medium hover:bg-red-50"
         onClick={() => {
           if (window.confirm('Clear all objects from the board?')) {
             board.clearAll();
@@ -198,7 +198,7 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
         Clear
       </button>
 
-      <div className="w-px h-6 bg-gray-300 mx-1" />
+      <div className="w-px h-6 bg-warm-300 mx-1" />
 
       {STICKY_COLORS.map((color) => (
         <button
@@ -214,11 +214,11 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
 
       {selectedObject?.type === 'text' && (
         <>
-          <div className="w-px h-6 bg-gray-300 mx-1" />
+          <div className="w-px h-6 bg-warm-300 mx-1" />
           {FONT_SIZES.map((size) => (
             <button
               key={size}
-              className="px-2 py-1 border border-gray-300 rounded-md bg-white cursor-pointer text-[11px] font-medium min-w-[32px] hover:bg-gray-50"
+              className="px-2 py-1 border border-warm-300 rounded-md bg-warm-50 cursor-pointer text-[11px] font-medium min-w-[32px] hover:bg-warm-100 text-warm-700"
               onClick={() => {
                 board.updateObject(selectedObject.id, { fontSize: size } as Partial<BoardObject>);
               }}
@@ -230,10 +230,10 @@ export function Toolbar({ board, selectedObject, activeTool, onToolChange, getSc
         </>
       )}
 
-      <div className="w-px h-6 bg-gray-300 mx-1" />
+      <div className="w-px h-6 bg-warm-300 mx-1" />
 
       <span
-        className={`text-[11px] font-medium whitespace-nowrap ${atLimit ? 'text-red-800 font-bold' : 'text-gray-400'}`}
+        className={`text-[11px] font-medium whitespace-nowrap ${atLimit ? 'text-red-800 font-bold' : 'text-warm-400'}`}
         title={`${String(objectCount)} / ${String(MAX_OBJECTS_PER_BOARD)} objects`}
       >
         {String(objectCount)}/{String(MAX_OBJECTS_PER_BOARD)}

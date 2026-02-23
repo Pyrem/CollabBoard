@@ -17,8 +17,8 @@ interface PresencePanelProps {
  */
 export function PresencePanel({ users }: PresencePanelProps): React.JSX.Element {
   return (
-    <div className="absolute top-3 right-3 bg-white rounded-[10px] shadow-md min-w-[180px] z-[100] overflow-hidden">
-      <div className="px-3.5 py-2.5 text-[13px] font-semibold border-b border-gray-200">
+    <div className="absolute top-3 right-3 bg-warm-50 rounded-[10px] shadow-md min-w-[180px] z-[100] overflow-hidden border border-warm-200">
+      <div className="px-3.5 py-2.5 text-[13px] font-semibold border-b border-warm-200 text-warm-700">
         Online ({users.length})
       </div>
       <div className="py-1.5 max-h-[200px] overflow-y-auto">
@@ -40,7 +40,7 @@ export function PresencePanel({ users }: PresencePanelProps): React.JSX.Element 
                 </span>
               )}
             </div>
-            <span className="text-[13px] text-gray-700">{user.displayName}</span>
+            <span className="text-[13px] text-warm-700">{user.displayName}</span>
           </div>
         ))}
       </div>
